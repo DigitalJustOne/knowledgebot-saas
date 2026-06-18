@@ -1,0 +1,39 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
+const envPath = path.resolve(process.cwd(), '.env.local');
+const env = fs.readFileSync(envPath, 'utf8').split('\n').filter(l => l.includes('=')).reduce((acc, l) => {
+  const [k, ...v] = l.split('=');
+  acc[k.trim()] = v.join('=').trim().replace(/['"]/g, '');
+  return acc;
+}, {} as any);
+Object.assign(process.env, env);
+
+import { createAdminClient } from './lib/supabase/admin';
+import { queryGoogleSheetTool } from './lib/agent/tools/query-google-sheet';
+
+async function test() {
+   console.log("Iniciando prueba de conexión con Google Sheets...");
+   const supabase = createAdminClient();
+   const { data: orgs, error: orgError } = await supabase.from('organizations').select('id').limit(1);
+   
+   if (orgError || !orgs || orgs.length === 0) {
+       console.error("Error obteniendo organización:", orgError);
+       return;
+   }
+   
+   const orgId = orgs[0].id;
+   console.log("Organización ID:", orgId);
+
+   const gSheetTool = queryGoogleSheetTool({ orgId });
+   
+   try {
+       const result = await gSheetTool.execute({ query: "" }, {} as any);
+       console.log("Resultado de la consulta:");
+       console.log(JSON.stringify(result, null, 2));
+   } catch (e) {
+       console.error("Excepción al ejecutar:", e);
+   }
+}
+
+test();

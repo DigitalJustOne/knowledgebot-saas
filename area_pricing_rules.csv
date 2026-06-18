@@ -1,0 +1,9 @@
+product_id,formula_type,rate,fixed_width_cm,min_dimension_cm,currency,notes
+318776b0-ac26-46a6-a028-25a22a92c90d,area_cm2,10,,,COP,Precio = alto_cm * ancho_cm * 10
+80daaf1a-6d0c-47a6-a7e7-103d27c89053,area_cm2,10,,,COP,Precio = alto_cm * ancho_cm * 10
+bd1ca085-0ddd-4687-a651-515876a6a67c,area_cm2,10,,,COP,Precio = alto_cm * ancho_cm * 10
+8fda083f-7243-4014-97cb-b7ec3536b656,area_cm2,10,,,COP,Precio = alto_cm * ancho_cm * 10
+7f86b358-fb63-40be-aca0-9978a5be9e5f,area_cm2,10,,,COP,Precio = alto_cm * ancho_cm * 10
+f3bbb32f-73ae-42d8-8ff8-3505d19cd99e,area_cm2,10,,,COP,Precio = alto_cm * ancho_cm * 10
+a20da0d7-4149-4ed1-ad1a-aaa4cfe63458,longitud_cm,700,59.0,,COP,"Precio = alto_cm * 700, ancho fijo 59cm"
+198d6ebf-6fb7-4906-8f35-32adb6f76cf3,longitud_cm,250,58.0,,COP,"Precio = alto_cm * 250, ancho fijo 58cm"
