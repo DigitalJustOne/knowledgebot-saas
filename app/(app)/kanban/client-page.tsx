@@ -4,7 +4,18 @@ import { useState, useEffect } from 'react';
 import { updateContactStageAction } from '@/lib/conversations/actions';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { ChatCircleDots, Robot, User, Clock, Question, Info, X } from '@phosphor-icons/react';
+import { ChatCircleDots, Robot, User, Clock, Question, Info, X, Funnel } from '@phosphor-icons/react';
+
+const LINE_COLORS = [
+  'bg-pink-500', 'bg-violet-500', 'bg-indigo-500', 
+  'bg-cyan-500', 'bg-teal-500', 'bg-lime-500', 
+  'bg-yellow-500', 'bg-orange-500'
+];
+
+interface WhatsAppLine {
+  line_key: string;
+  display_name: string;
+}
 
 const STAGES = [
   { 
@@ -61,14 +72,20 @@ export function KanbanBoard({ initialConversations, orgId }: { initialConversati
   const router = useRouter();
   const supabase = createClient();
   const [conversations, setConversations] = useState(initialConversations);
+  const [lines, setLines] = useState<WhatsAppLine[]>([]);
+  const [selectedLine, setSelectedLine] = useState<string>('Todas');
   const [showGuide, setShowGuide] = useState(false);
   const [scrollDirection, setScrollDirection] = useState<'left' | 'right' | null>(null);
+
+  const filteredConversations = selectedLine === 'Todas' 
+    ? conversations 
+    : conversations.filter(c => c.line_key === selectedLine);
 
   // Group conversations by stage
   const columns = STAGES.map(stage => {
     return {
       ...stage,
-      items: conversations.filter(c => {
+      items: filteredConversations.filter(c => {
         const cStage = c.contacts?.metadata?.stage || 'inbox';
         return cStage === stage.id;
       })
@@ -90,6 +107,16 @@ export function KanbanBoard({ initialConversations, orgId }: { initialConversati
       supabase.removeChannel(channel);
     };
   }, [supabase, router]);
+
+  useEffect(() => {
+    const fetchLines = async () => {
+      const { data } = await (supabase as any).from('whatsapp_lines').select('line_key, display_name').order('created_at');
+      if (data) setLines(data);
+    };
+    fetchLines();
+    const saved = localStorage.getItem('kb_selected_line');
+    if (saved) setSelectedLine(saved);
+  }, [supabase]);
 
   const [isDragging, setIsDragging] = useState(false);
   const [startX, setStartX] = useState(0);
@@ -220,7 +247,7 @@ export function KanbanBoard({ initialConversations, orgId }: { initialConversati
       `}} />
 
       {/* Kanban Info / Guide Toggle Button */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
         <button
           onClick={() => setShowGuide(!showGuide)}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 hover:text-white transition-all shadow-md"
@@ -228,6 +255,27 @@ export function KanbanBoard({ initialConversations, orgId }: { initialConversati
           <Info size={14} weight="fill" className="text-primary-400" />
           {showGuide ? 'Ocultar Guía de Flujos' : 'Ver Guía de Flujos (IA vs Humano)'}
         </button>
+
+        {lines.length > 0 && (
+          <div className="flex items-center gap-2 bg-slate-900/50 p-1.5 rounded-lg border border-white/5">
+            <Funnel size={14} className="text-slate-400 ml-1" />
+            <select
+              value={selectedLine}
+              onChange={(e) => {
+                setSelectedLine(e.target.value);
+                localStorage.setItem('kb_selected_line', e.target.value);
+              }}
+              className="bg-transparent text-xs text-slate-300 outline-none w-full cursor-pointer pr-4"
+            >
+              <option value="Todas" className="bg-slate-900">Todas las líneas</option>
+              {lines.map(line => (
+                <option key={line.line_key} value={line.line_key} className="bg-slate-900">
+                  {line.display_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Guide Banner */}
@@ -331,6 +379,12 @@ export function KanbanBoard({ initialConversations, orgId }: { initialConversati
                     <h4 className="font-semibold text-white text-sm truncate pr-2">
                       {conv.contacts?.full_name || conv.contacts?.wa_phone}
                     </h4>
+                    {conv.line_key && lines.length > 0 && (
+                      <div 
+                        className={`w-2 h-2 shrink-0 mt-1.5 rounded-full shadow-sm ${LINE_COLORS[lines.findIndex(l => l.line_key === conv.line_key) % LINE_COLORS.length]}`} 
+                        title={`Línea: ${lines.find(l => l.line_key === conv.line_key)?.display_name}`}
+                      />
+                    )}
                   </div>
                   
                   {/* Phone and Date info */}

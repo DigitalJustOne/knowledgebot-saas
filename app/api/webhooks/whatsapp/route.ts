@@ -110,10 +110,13 @@ async function processMetaWebhook(
   const message = adapter.parseInboundMessage(body);
   if (!message) return;
 
+  const lineKey = wabaId;
+
   await processInboundMessage(
     waConfig.organization_id,
     message,
     waConfig,
+    lineKey,
     runAgentForMessage
   );
 }
@@ -125,6 +128,7 @@ async function processOpenWAWebhook(
   // OpenWA webhooks include session ID — find matching org
   const data = body.data as Record<string, unknown>;
   const sessionId = data?.sessionId as string || 'default';
+  const lineKey = (body.line_key as string) || (data?.line_key as string) || sessionId;
 
   const { data: waConfig } = await (supabase as any)
     .from('whatsapp_configs')
@@ -155,6 +159,7 @@ async function processOpenWAWebhook(
       fallbackConfig.organization_id,
       message,
       fallbackConfig,
+      lineKey,
       runAgentForMessage
     );
     return;
@@ -168,6 +173,7 @@ async function processOpenWAWebhook(
     waConfig.organization_id,
     message,
     waConfig,
+    lineKey,
     runAgentForMessage
   );
 }

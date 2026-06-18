@@ -2,14 +2,26 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChatCircleDots } from '@phosphor-icons/react';
+import { ChatCircleDots, Funnel } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+
+interface WhatsAppLine {
+  line_key: string;
+  display_name: string;
+}
+
+const LINE_COLORS = [
+  'bg-pink-500', 'bg-violet-500', 'bg-indigo-500', 
+  'bg-cyan-500', 'bg-teal-500', 'bg-lime-500', 
+  'bg-yellow-500', 'bg-orange-500'
+];
 
 interface ConversationItem {
   id: string;
   bot_active: boolean;
   last_message_at: string;
+  line_key?: string | null;
   contacts: {
     full_name: string | null;
     wa_phone: string;
@@ -19,7 +31,19 @@ interface ConversationItem {
 export function ConversationList({ list }: { list: ConversationItem[] }) {
   const pathname = usePathname();
   const [conversations, setConversations] = useState(list);
+  const [lines, setLines] = useState<WhatsAppLine[]>([]);
+  const [selectedLine, setSelectedLine] = useState<string>('Todas');
   const supabase = createClient();
+
+  useEffect(() => {
+    const fetchLines = async () => {
+      const { data } = await (supabase as any).from('whatsapp_lines').select('line_key, display_name').order('created_at');
+      if (data) setLines(data);
+    };
+    fetchLines();
+    const saved = localStorage.getItem('kb_selected_line');
+    if (saved) setSelectedLine(saved);
+  }, [supabase]);
 
   // Sync when parent prop changes (navigation between chats)
   useEffect(() => {
@@ -79,13 +103,34 @@ export function ConversationList({ list }: { list: ConversationItem[] }) {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="p-4 border-b border-white/5">
+      <div className="p-4 border-b border-white/5 space-y-3">
         <h2 className="text-sm font-semibold text-white">Chat Recientes</h2>
+        
+        {lines.length > 0 && (
+          <div className="flex items-center gap-2 bg-slate-900/50 p-1.5 rounded-lg border border-white/5">
+            <Funnel size={14} className="text-slate-400 ml-1" />
+            <select
+              value={selectedLine}
+              onChange={(e) => {
+                setSelectedLine(e.target.value);
+                localStorage.setItem('kb_selected_line', e.target.value);
+              }}
+              className="bg-transparent text-xs text-slate-300 outline-none w-full cursor-pointer"
+            >
+              <option value="Todas" className="bg-slate-900">Todas las líneas</option>
+              {lines.map(line => (
+                <option key={line.line_key} value={line.line_key} className="bg-slate-900">
+                  {line.display_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {conversations.length > 0 ? (
-          conversations.map((conv) => {
+        {conversations.filter(c => selectedLine === 'Todas' || c.line_key === selectedLine).length > 0 ? (
+          conversations.filter(c => selectedLine === 'Todas' || c.line_key === selectedLine).map((conv) => {
             const isActive = pathname.includes(conv.id);
             const contact = conv.contacts;
             const name = contact?.full_name || contact?.wa_phone || 'Desconocido';
@@ -105,9 +150,17 @@ export function ConversationList({ list }: { list: ConversationItem[] }) {
                     {Array.from(name)[0]?.toUpperCase()}
                   </div>
                   <div className="flex flex-col overflow-hidden">
-                    <span className="text-sm font-medium text-slate-200 truncate" suppressHydrationWarning>
-                      {name}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-medium text-slate-200 truncate" suppressHydrationWarning>
+                        {name}
+                      </span>
+                      {conv.line_key && lines.length > 0 && (
+                        <div 
+                          className={`w-1.5 h-1.5 rounded-full ${LINE_COLORS[lines.findIndex(l => l.line_key === conv.line_key) % LINE_COLORS.length]}`} 
+                          title={`Línea: ${lines.find(l => l.line_key === conv.line_key)?.display_name}`}
+                        />
+                      )}
+                    </div>
                     <span className="text-[10px] text-slate-500" suppressHydrationWarning>
                       {new Date(conv.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>

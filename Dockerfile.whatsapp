@@ -1,4 +1,4 @@
-FROM node:18-slim
+FROM node:20-slim
 
 # Install latest chrome stable package and fonts to support major charsets and prevent puppeteer downloading chromium
 RUN apt-get update && apt-get install -y \

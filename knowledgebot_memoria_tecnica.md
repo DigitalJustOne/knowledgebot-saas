@@ -94,3 +94,20 @@ Para lidiar con las miles de referencias de productos y sus escalas de precios, 
 *   **Next.js Standalone**: Se configuró `output: 'standalone'` en `next.config.ts` para reducir drásticamente el tamaño de la imagen Docker de producción.
 *   **Correcciones de TypeScript**: Se resolvieron múltiples errores estrictos de tipado (e.g., `Array.from` en nombres, y casteos `as any` en funciones RPC de Supabase) para garantizar que el proceso de *build* para producción pase al 100%.
 *   **Aislamiento de Scripts**: Se excluyó la carpeta `scripts/` en `tsconfig.json` para evitar que pruebas o utilidades locales bloqueen el despliegue a producción.
+
+---
+
+## 🚀 7. Arquitectura Multi-Línea de WhatsApp
+
+Para permitir que una sola organización (como ZOOM Publicidad) escale su operación de ventas de forma masiva, el SaaS implementa una arquitectura **Multi-Línea** que permite conectar y gestionar hasta 8 números de WhatsApp independientes desde un único panel centralizado. 
+
+### Principios del Diseño Multi-Línea
+1. **Identidad Unificada**: Las múltiples líneas son atendidas por el mismo agente central ("Oscar"), consumiendo exactamente el mismo catálogo de productos, directrices de precios y base de conocimientos. Esto evita la fragmentación de información y elimina la necesidad de multiplicar el entrenamiento o los datos por cada número celular.
+2. **Conexión Local (No Meta API)**: Por decisión y requerimiento estricto del proyecto, la conexión de WhatsApp **NO emplea las APIs oficiales de Meta Cloud**. Todo el tráfico pasa a través del puente local (`wa-server-knowledge` con `whatsapp-web.js`), el cual soporta múltiples sesiones dinámicas. Las sesiones (`.wwebjs_auth`) se almacenan de forma persistente (o mediante un *Volume* en Railway) garantizando que no se pierda la autenticación tras reinicios.
+3. **Generación de Códigos QR Inline**: El emparejamiento con WhatsApp se digitalizó por completo. En lugar de revisar la consola de comandos de Windows, el panel SaaS obtiene los códigos QR en *Base64* desde las APIs del puente y los renderiza visualmente en el navegador en tiempo real.
+
+### Cambios Clave en la Arquitectura (Next.js 15+ y PostgreSQL)
+*   **Base de Datos Segura**: Se integró la tabla `whatsapp_lines` y se extendió el rastreo a `conversations` y `messages` agregando la columna `line_key`. Para proteger esta tabla, se aplicó **RLS (Row Level Security)** nativo en Supabase, utilizando sub-consultas SQL estándar (`organization_id IN (SELECT ...)`) que no dependen de funciones *helper* locales, siendo robustas para cualquier entorno de producción.
+*   **APIs Modernas (Route Handlers)**: La gestión de líneas en Next.js (`/api/whatsapp-lines/...`) usa *Route Handlers* modernos con extracción asíncrona de variables (`await params`), cumpliendo con los estándares y los *breaking changes* estrictos de Vercel/Next.js (15+) para evitar cuelgues durante el proceso de *build* de despliegue.
+*   **Idempotencia en Webhooks Multi-sesión**: El webhook principal intercepta los mensajes de todas las sesiones de Puppeteer y les inyecta el `line_key`. Utiliza sentencias `upsert` atadas al `wa_message_id` para garantizar que la concurrencia de 8 líneas nunca genere mensajes duplicados o errores de integridad referencial.
+*   **Interfaz Operativa Central**: Se creó un panel unificado para conectar/desconectar líneas dinámicamente. Adicionalmente, el asesor cuenta con un filtro persistente (`localStorage`) en el listado de conversaciones que separa los chats por la línea de origen, optimizando el manejo de grandes volúmenes de clientes.

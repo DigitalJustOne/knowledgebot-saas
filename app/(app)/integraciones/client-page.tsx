@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition, useEffect } from 'react';
+import Link from 'next/link';
 import { 
   saveWhatsAppConfigAction, 
   connectGoogleCalendarAction, 
@@ -159,6 +160,20 @@ export default function IntegrationsClientPage({
               <h2 className="text-lg font-semibold text-white">WhatsApp</h2>
               <p className="text-xs" style={{ color: 'rgba(148, 163, 184, 0.5)' }}>Canal principal de chat de los clientes</p>
             </div>
+          </div>
+
+          <div className="bg-primary-500/10 border border-primary-500/20 rounded-xl p-5 mb-4 shadow-[0_0_15px_rgba(99,102,241,0.1)]">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-bold bg-primary-500 text-white px-2 py-0.5 rounded uppercase tracking-wider">Nuevo</span>
+              <h3 className="text-sm font-bold text-white">Gestor Multi-Línea</h3>
+            </div>
+            <p className="text-xs text-slate-300 mb-4 leading-relaxed">
+              Ahora puedes conectar hasta 8 números de WhatsApp independientes. Asigna nombres a tus líneas y escanea los códigos QR directamente desde tu navegador sin usar la consola.
+            </p>
+            <Link href="/integraciones/whatsapp" className="btn-primary w-full inline-flex justify-center items-center gap-2">
+              <WhatsappLogo size={18} weight="fill" />
+              Administrar Líneas
+            </Link>
           </div>
 
           {/* Provider Selector Tabs */}

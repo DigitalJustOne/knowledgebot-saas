@@ -15,6 +15,7 @@ export async function processInboundMessage(
   orgId: string,
   message: NormalizedMessage,
   waConfig: WhatsAppConfig,
+  lineKey: string | null,
   runAgent: (params: {
     orgId: string;
     contactPhone: string;
@@ -90,6 +91,7 @@ export async function processInboundMessage(
         .insert({
           organization_id: orgId,
           contact_id: contactId,
+          line_key: lineKey,
         })
         .select('id, bot_active')
         .single();
@@ -145,6 +147,7 @@ export async function processInboundMessage(
                 direction,
                 sender,
                 content: content,
+                line_key: lineKey,
                 created_at: new Date(m.timestamp).toISOString(),
               };
             });
@@ -189,6 +192,7 @@ export async function processInboundMessage(
           direction: 'inbound',
           sender: 'contact',
           content: message.text,
+          line_key: lineKey,
           raw: message.raw,
         },
         { onConflict: 'wa_message_id', ignoreDuplicates: true }
@@ -235,6 +239,7 @@ export async function processInboundMessage(
               direction: 'outbound',
               sender: 'bot',
               content: agentResponse,
+              line_key: lineKey,
             });
 
           const latency = Date.now() - startTime;
