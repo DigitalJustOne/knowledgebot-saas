@@ -21,7 +21,7 @@ const openrouter = createOpenAICompatible({
 });
 
 // DeepSeek Chat is provided through OpenRouter for the conversational layer.
-const model = openrouter.chatModel('deepseek/deepseek-v4-flash');
+const model = openrouter.chatModel(process.env.CHAT_MODEL || 'google/gemini-2.5-flash');
 
 /**
  * Removes consecutive duplicate assistant messages from the conversation history.
