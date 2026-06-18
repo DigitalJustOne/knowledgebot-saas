@@ -247,35 +247,56 @@ export function KanbanBoard({ initialConversations, orgId }: { initialConversati
       `}} />
 
       {/* Kanban Info / Guide Toggle Button */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+      <div className="flex flex-col gap-4 mb-4">
+        {/* Line Tabs - horizontal tab bar */}
+        {lines.length > 0 && (
+          <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-hide" style={{ scrollbarWidth: 'none' }}>
+            <button
+              onClick={() => {
+                setSelectedLine('Todas');
+                localStorage.setItem('kb_selected_line', 'Todas');
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                selectedLine === 'Todas'
+                  ? 'bg-primary-500/20 text-primary-300 border border-primary-500/40 shadow-lg shadow-primary-500/10'
+                  : 'bg-white/5 text-slate-400 border border-white/5 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              Todas las líneas
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10">{conversations.length}</span>
+            </button>
+            {lines.map((line, idx) => {
+              const lineCount = conversations.filter(c => c.line_key === line.line_key).length;
+              const dotColor = LINE_COLORS[idx % LINE_COLORS.length].replace('bg-', '');
+              return (
+                <button
+                  key={line.line_key}
+                  onClick={() => {
+                    setSelectedLine(line.line_key);
+                    localStorage.setItem('kb_selected_line', line.line_key);
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                    selectedLine === line.line_key
+                      ? 'bg-white/15 text-white border border-white/20 shadow-lg'
+                      : 'bg-white/5 text-slate-400 border border-white/5 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  <span className={`w-2.5 h-2.5 rounded-full ${LINE_COLORS[idx % LINE_COLORS.length]}`} />
+                  {line.display_name}
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10">{lineCount}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <button
           onClick={() => setShowGuide(!showGuide)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 hover:text-white transition-all shadow-md"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 hover:text-white transition-all shadow-md w-max"
         >
           <Info size={14} weight="fill" className="text-primary-400" />
           {showGuide ? 'Ocultar Guía de Flujos' : 'Ver Guía de Flujos (IA vs Humano)'}
         </button>
-
-        {lines.length > 0 && (
-          <div className="flex items-center gap-2 bg-slate-900/50 p-1.5 rounded-lg border border-white/5">
-            <Funnel size={14} className="text-slate-400 ml-1" />
-            <select
-              value={selectedLine}
-              onChange={(e) => {
-                setSelectedLine(e.target.value);
-                localStorage.setItem('kb_selected_line', e.target.value);
-              }}
-              className="bg-transparent text-xs text-slate-300 outline-none w-full cursor-pointer pr-4"
-            >
-              <option value="Todas" className="bg-slate-900">Todas las líneas</option>
-              {lines.map(line => (
-                <option key={line.line_key} value={line.line_key} className="bg-slate-900">
-                  {line.display_name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
       </div>
 
       {/* Guide Banner */}

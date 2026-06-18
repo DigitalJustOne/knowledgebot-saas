@@ -1,5 +1,6 @@
 import { Sidebar } from '@/components/sidebar';
 import { NotificationBell } from '@/components/notification-bell';
+import { MobileNav } from '@/components/mobile-nav';
 import { getCurrentUser } from '@/lib/auth/actions';
 import { redirect } from 'next/navigation';
 
@@ -31,13 +32,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NotificationBell />
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 p-4 lg:p-8 overflow-auto">
+        {/* Page content — pb-20 on mobile so floating nav doesn't cover content */}
+        <main className="flex-1 p-4 lg:p-8 pb-24 lg:pb-8 overflow-auto">
           <div className="max-w-7xl mx-auto">
             {children}
           </div>
         </main>
       </div>
+
+      {/* Mobile floating bottom nav */}
+      <MobileNav />
     </div>
   );
 }

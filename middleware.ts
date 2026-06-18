@@ -37,6 +37,8 @@ export async function middleware(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith('/dashboard') ||
       request.nextUrl.pathname.startsWith('/citas') ||
       request.nextUrl.pathname.startsWith('/conversaciones') ||
+      request.nextUrl.pathname.startsWith('/kanban') ||
+      request.nextUrl.pathname.startsWith('/conocimiento') ||
       request.nextUrl.pathname.startsWith('/personalizacion') ||
       request.nextUrl.pathname.startsWith('/integraciones')) {
     if (!user) {
