@@ -27,7 +27,20 @@ export default function RootLayout({
       lang="es"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {/* Inject supabase environment variables dynamically at runtime */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.__ENV = {
+                NEXT_PUBLIC_SUPABASE_URL: ${JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_URL || "")},
+                NEXT_PUBLIC_SUPABASE_ANON_KEY: ${JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "")}
+              };
+            `
+          }}
+        />
+        {children}
+      </body>
     </html>
   );
 }
