@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { loginAction } from '@/lib/auth/actions';
 import Link from 'next/link';
-import { WhatsappLogo, EnvelopeSimple, Lock, SpinnerGap } from '@phosphor-icons/react';
+import { WhatsappLogo, EnvelopeSimple, Lock, SpinnerGap, Eye, EyeSlash } from '@phosphor-icons/react';
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function handleSubmit(formData: FormData) {
     setLoading(true);
@@ -66,12 +67,20 @@ export default function LoginPage() {
                 <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(148, 163, 184, 0.5)' }} />
                 <input
                   name="password"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
-                  className="input pl-10"
+                  className="input pl-10 pr-10"
                   placeholder="••••••••"
                   minLength={6}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 hover:text-white transition-colors"
+                  style={{ color: 'rgba(148, 163, 184, 0.5)' }}
+                >
+                  {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
 
