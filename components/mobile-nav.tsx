@@ -5,15 +5,15 @@ import { usePathname } from 'next/navigation';
 import {
   SquaresFour,
   ChatCircleDots,
-  Kanban,
   SlidersHorizontal,
   Plugs,
 } from '@phosphor-icons/react';
 
+// NOTE: Pipeline (Kanban) is intentionally NOT in the mobile nav.
+// It is a desktop-only feature (designed for wide screens, used in the office).
 const mobileNavItems = [
   { href: '/dashboard', label: 'Dashboard', icon: SquaresFour },
   { href: '/conversaciones', label: 'Chats', icon: ChatCircleDots },
-  { href: '/kanban', label: 'Pipeline', icon: Kanban },
   { href: '/personalizacion', label: 'Config', icon: SlidersHorizontal },
   { href: '/integraciones', label: 'Integrar', icon: Plugs },
 ];
