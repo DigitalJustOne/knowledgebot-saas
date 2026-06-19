@@ -119,7 +119,12 @@ export async function disconnectWhatsAppAction() {
       headers: bridgeHeaders(),
       body: JSON.stringify({}),
     });
-    const data = await res.json();
+    // Defensive: the bridge may return HTML (404) instead of JSON in some edge cases.
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      return { success: true, note: 'Sesión cerrada desde el panel multi-línea.' };
+    }
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(data.error || 'Error al cerrar sesión en el servidor local.');
     }

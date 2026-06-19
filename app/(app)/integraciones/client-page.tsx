@@ -1,26 +1,18 @@
 'use client';
 
-import { useState, useTransition, useEffect } from 'react';
+import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import { 
-  saveWhatsAppConfigAction, 
-  connectGoogleCalendarAction, 
+import {
+  connectGoogleCalendarAction,
   disconnectGoogleCalendarAction,
   saveGoogleCalendarIdAction,
-  disconnectWhatsAppAction,
-  checkWhatsAppStatusAction
 } from '@/lib/integrations/actions';
-import { 
-  WhatsappLogo, 
-  GoogleLogo, 
-  Plugs, 
-  Check, 
-  SpinnerGap, 
-  Eye, 
-  EyeSlash, 
+import {
+  WhatsappLogo,
+  GoogleLogo,
+  Plugs,
+  SpinnerGap,
   Trash,
-  WifiHigh,
-  WifiSlash
 } from '@phosphor-icons/react';
 
 interface IntegrationsPageProps {
@@ -29,79 +21,16 @@ interface IntegrationsPageProps {
   calendarsList: { id: string; name: string }[];
 }
 
-export default function IntegrationsClientPage({ 
-  initialWaConfig, 
+export default function IntegrationsClientPage({
+  initialWaConfig,
   initialCalendarConfig,
-  calendarsList 
+  calendarsList
 }: IntegrationsPageProps) {
-  const [provider, setProvider] = useState<'openwa' | 'meta'>(initialWaConfig?.provider || 'openwa');
-  const [showSecret, setShowSecret] = useState(false);
-  const [waError, setWaError] = useState<string | null>(null);
-  const [waSuccess, setWaSuccess] = useState(false);
   const [isPending, startTransition] = useTransition();
-
-  // Connection status of local WhatsApp bot
-  const [isConnected, setIsConnected] = useState<boolean | null>(null);
-  const [checkingStatus, setCheckingStatus] = useState(false);
 
   const [calId, setCalId] = useState(initialCalendarConfig?.calendar_id || '');
   const [calError, setCalError] = useState<string | null>(null);
   const [calSuccess, setCalSuccess] = useState(false);
-
-
-  useEffect(() => {
-    if (provider === 'openwa') {
-      checkStatus();
-      const interval = setInterval(checkStatus, 10000); // Check every 10s
-      return () => clearInterval(interval);
-    }
-  }, [provider]);
-
-  async function checkStatus() {
-    setCheckingStatus(true);
-    try {
-      const res = await checkWhatsAppStatusAction();
-      setIsConnected(res.connected);
-    } catch {
-      setIsConnected(false);
-    } finally {
-      setCheckingStatus(false);
-    }
-  }
-
-  function handleWaSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setWaError(null);
-    setWaSuccess(false);
-    
-    const formData = new FormData(e.currentTarget);
-    formData.append('provider', provider);
-
-    startTransition(async () => {
-      const res = await saveWhatsAppConfigAction(formData);
-      if (res?.error) {
-        setWaError(res.error);
-      } else {
-        setWaSuccess(true);
-      }
-    });
-  }
-
-  function handleWaDisconnect() {
-    if (confirm('¿Seguro que deseas desvincular WhatsApp y cerrar sesión?')) {
-      setWaError(null);
-      setWaSuccess(false);
-      startTransition(async () => {
-        const res = await disconnectWhatsAppAction();
-        if (res?.error) {
-          setWaError(res.error);
-        } else {
-          setWaSuccess(true);
-          alert('Sesión de WhatsApp cerrada con éxito. Revisa tu consola de PowerShell para ver el nuevo código QR.');
-        }
-      });
-    }
-  }
 
   function handleCalIdSave() {
     setCalError(null);
@@ -176,112 +105,9 @@ export default function IntegrationsClientPage({
             </Link>
           </div>
 
-          {/* Legacy single-line configuration removed to avoid confusion. All WhatsApp configuration is now done in the Gestor Multi-Línea */}
-
-          {waError && (
-            <div className="p-3 rounded-xl text-sm" style={{ background: 'rgba(244, 63, 94, 0.1)', border: '1px solid rgba(244, 63, 94, 0.2)', color: '#fb7185' }}>
-              {waError}
-            </div>
-          )}
-
-          {waSuccess && (
-            <div className="p-3 rounded-xl text-sm" style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', color: '#34d399' }}>
-              Configuración de WhatsApp guardada exitosamente.
-            </div>
-          )}
-
-          <form onSubmit={handleWaSubmit} className="space-y-4">
-            {/* Meta Cloud API (Solo lectura o legacy) */}
-            <div className="p-3 bg-slate-800/50 rounded-lg mb-4">
-               <p className="text-xs text-slate-400">Si utilizas Meta Cloud API Oficial, configura los parámetros a continuación. Para conexiones estándar, utiliza el <strong>Gestor Multi-Línea</strong> arriba.</p>
-            </div>
-            {provider === 'meta' && (
-              <>
-                <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: 'rgba(148, 163, 184, 0.7)' }}>Identificador de Número de Teléfono (Phone ID)</label>
-                  <input
-                    name="phoneNumberId"
-                    type="text"
-                    defaultValue={initialWaConfig?.phone_number_id || ''}
-                    required
-                    className="input text-sm"
-                    placeholder="1029384756..."
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: 'rgba(148, 163, 184, 0.7)' }}>ID de cuenta de WhatsApp Business (WABA ID)</label>
-                  <input
-                    name="wabaId"
-                    type="text"
-                    defaultValue={initialWaConfig?.waba_id || ''}
-                    required
-                    className="input text-sm"
-                    placeholder="987654321..."
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: 'rgba(148, 163, 184, 0.7)' }}>Token de Acceso Permanente (Access Token)</label>
-                  <div className="relative">
-                    <input
-                      name="accessToken"
-                      type={showSecret ? 'text' : 'password'}
-                      className="input text-sm pr-10"
-                      placeholder="EAAGy..."
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowSecret(!showSecret)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                    >
-                      {showSecret ? <EyeSlash size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: 'rgba(148, 163, 184, 0.7)' }}>Token de Verificación del Webhook</label>
-                  <input
-                    name="verifyToken"
-                    type="text"
-                    defaultValue={initialWaConfig?.verify_token || ''}
-                    required
-                    className="input text-sm"
-                    placeholder="mi-verify-token-seguro"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: 'rgba(148, 163, 184, 0.7)' }}>App Secret de la App de Meta (Opcional)</label>
-                  <input
-                    name="appSecret"
-                    type="password"
-                    className="input text-sm"
-                    placeholder="Para validación de firma HMAC"
-                  />
-                </div>
-              </>
-            )}
-
-            <div className="flex gap-3">
-              <button
-                type="submit"
-                disabled={isPending}
-                className="btn-primary flex-1"
-              >
-                {isPending ? <SpinnerGap size={18} className="animate-spin" /> : null}
-                {isPending ? 'Guardando...' : 'Guardar configuración'}
-              </button>
-              {provider === 'openwa' && isConnected && (
-                <button
-                  type="button"
-                  onClick={handleWaDisconnect}
-                  disabled={isPending}
-                  className="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 rounded-xl font-semibold text-sm transition-colors"
-                  title="Desvincular WhatsApp"
-                >
-                  Desvincular
-                </button>
-              )}
-            </div>
-          </form>
+          {/* Legacy single-line Meta Cloud API configuration removed.
+              All WhatsApp management is done in the Multi-Line Manager above.
+              (Meta official API is explicitly NOT used in this project.) */}
         </div>
 
         {/* Google Calendar Card */}
