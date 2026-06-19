@@ -67,9 +67,9 @@ export function createMetaAdapter(config: WhatsAppConfig): WhatsAppAdapter {
 }
 
 /** OpenWA adapter for testing */
-export function createOpenWAAdapter(config: WhatsAppConfig): WhatsAppAdapter {
+export function createOpenWAAdapter(config: WhatsAppConfig, lineKey?: string | null): WhatsAppAdapter {
   const baseUrl = config.openwa_api_url || 'http://localhost:2785';
-  const sessionId = config.openwa_session_id || 'default';
+  const sessionId = lineKey || config.openwa_session_id || 'default';
   const apiKey = config.openwa_api_key || '';
 
   return {
@@ -129,14 +129,14 @@ export function createOpenWAAdapter(config: WhatsAppConfig): WhatsAppAdapter {
 }
 
 /** Factory: create the right adapter based on provider config */
-export function createAdapter(config: WhatsAppConfig): WhatsAppAdapter {
+export function createAdapter(config: WhatsAppConfig, lineKey?: string | null): WhatsAppAdapter {
   const provider: WhatsAppProvider = config.provider || 'openwa';
   switch (provider) {
     case 'meta':
       return createMetaAdapter(config);
     case 'openwa':
-      return createOpenWAAdapter(config);
+      return createOpenWAAdapter(config, lineKey);
     default:
-      return createOpenWAAdapter(config);
+      return createOpenWAAdapter(config, lineKey);
   }
 }

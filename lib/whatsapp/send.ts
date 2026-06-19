@@ -26,7 +26,16 @@ export async function sendWhatsAppMessage(
       return false;
     }
 
-    const adapter = createAdapter(waConfig);
+    // Get conversation to find the line_key
+    const { data: conv } = await (supabase as any)
+      .from('conversations')
+      .select('line_key')
+      .eq('id', conversationId)
+      .single();
+
+    const lineKey = (conv as any)?.line_key || null;
+
+    const adapter = createAdapter(waConfig, lineKey);
     const waMessageId = await adapter.sendTextMessage(to, text);
 
     // Save outbound message

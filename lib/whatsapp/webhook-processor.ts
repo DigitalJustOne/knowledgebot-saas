@@ -226,7 +226,7 @@ export async function processInboundMessage(
 
         if (agentResponse) {
           // Send response via WhatsApp
-          const adapter: WhatsAppAdapter = createAdapter(waConfig);
+          const adapter: WhatsAppAdapter = createAdapter(waConfig, lineKey);
           const waMessageId = await adapter.sendTextMessage(message.from, agentResponse);
 
           // Save outbound message

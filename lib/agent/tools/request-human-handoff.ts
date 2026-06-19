@@ -24,13 +24,14 @@ interface EmergencyContact {
 async function notifyEmergencyContacts(
   alertMessage: string,
   orgId: string,
+  conversationId: string,
   agentConfigMeta?: any
 ): Promise<string[]> {
   const notified: string[] = [];
   try {
     const supabase = createAdminClient();
 
-    // Get WhatsApp adapter
+    // Get WhatsApp config
     const { data: waConfig } = await (supabase as any)
       .from('whatsapp_configs')
       .select('*')
@@ -42,7 +43,16 @@ async function notifyEmergencyContacts(
       return notified;
     }
 
-    const adapter = createAdapter(waConfig);
+    // Get conversation to find the line_key
+    const { data: conv } = await (supabase as any)
+      .from('conversations')
+      .select('line_key')
+      .eq('id', conversationId)
+      .single();
+
+    const lineKey = conv?.line_key || null;
+
+    const adapter = createAdapter(waConfig, lineKey);
 
     // Collect active contacts from Supabase metadata
     const contacts: EmergencyContact[] = (agentConfigMeta?.emergency_contacts || []).filter(
@@ -187,6 +197,7 @@ export function requestHumanHandoffTool(ctx: ToolContext) {
       const notifiedNumbers = await notifyEmergencyContacts(
         alertMessage,
         ctx.orgId,
+        ctx.conversationId,
         agentConfig?.metadata
       );
 

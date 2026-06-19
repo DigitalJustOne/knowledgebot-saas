@@ -134,6 +134,7 @@ export function KanbanBoard({ initialConversations, orgId }: { initialConversati
   const [isDragging, setIsDragging] = useState(false);
   const [startX, setStartX] = useState(0);
   const [scrollLeftVal, setScrollLeftVal] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
 
   const filteredConversations = selectedLine === 'Todas' 
     ? conversations 
@@ -165,6 +166,10 @@ export function KanbanBoard({ initialConversations, orgId }: { initialConversati
     const saved = localStorage.getItem('kb_selected_line');
     if (saved) setSelectedLine(saved);
   }, [supabase]);
+
+  useEffect(() => {
+    setIsMobile('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
 
   useEffect(() => { setConversations(initialConversations); }, [initialConversations]);
 
@@ -374,31 +379,36 @@ export function KanbanBoard({ initialConversations, orgId }: { initialConversati
               {col.items.map(conv => (
                 <div
                   key={conv.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, conv.contact_id)}
+                  draggable={!isMobile}
+                  onDragStart={(e) => {
+                    if (isMobile) return;
+                    handleDragStart(e, conv.contact_id);
+                  }}
                   onDragEnd={() => setScrollDirection(null)}
-                  className="bg-slate-900 border border-slate-700/50 p-3 rounded-xl cursor-grab hover:border-primary-500/40 transition-all shadow-md active:cursor-grabbing group relative flex flex-col gap-2"
+                  className={`bg-slate-900 border border-slate-700/50 p-3 rounded-xl hover:border-primary-500/40 transition-all shadow-md group relative flex flex-col gap-2 ${
+                    isMobile ? '' : 'cursor-grab active:cursor-grabbing'
+                  }`}
                 >
                   {/* Name + line dot */}
                   <div className="flex items-start justify-between gap-1">
-                    <h4 className="font-semibold text-white text-sm truncate flex-1"
+                    <h4 className="font-semibold text-white text-sm truncate flex-1 cursor-pointer hover:text-primary-450"
                       onClick={() => router.push(`/conversaciones/${conv.id}`)}>
                       {conv.contacts?.full_name || conv.contacts?.wa_phone}
                     </h4>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {conv.line_key && lines.length > 0 && (
                         <div 
-                          className={`w-2 h-2 rounded-full ${LINE_COLORS[lines.findIndex(l => l.line_key === conv.line_key) % LINE_COLORS.length]}`}
+                          className={`w-2.5 h-2.5 rounded-full ${LINE_COLORS[lines.findIndex(l => l.line_key === conv.line_key) % LINE_COLORS.length]}`}
                           title={`Línea: ${lines.find(l => l.line_key === conv.line_key)?.display_name}`}
                         />
                       )}
                       {/* Mobile move button */}
                       <button
-                        className="sm:hidden p-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition-all"
+                        className={`${isMobile ? 'block' : 'hidden sm:hidden'} p-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition-all`}
                         onClick={(e) => { e.stopPropagation(); setMoveTarget(conv); }}
                         title="Mover a otra columna"
                       >
-                        <ArrowsLeftRight size={13} />
+                        <ArrowsLeftRight size={14} />
                       </button>
                     </div>
                   </div>

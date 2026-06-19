@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Phone, QrCode, Plus, Trash, Plug, SpinnerGap } from '@phosphor-icons/react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Phone, QrCode, Plus, Trash, Plug, SpinnerGap, Warning, ArrowCounterClockwise } from '@phosphor-icons/react';
 
 interface WhatsAppLine {
   id: string;
@@ -12,58 +12,146 @@ interface WhatsAppLine {
   qr_code: string | null;
 }
 
+// Track how long each line has been in awaiting_qr without a QR
+const QR_TIMEOUT_MS = 35_000; // 35 seconds
+
 export default function ClientPage({ initialLines }: { initialLines: WhatsAppLine[] }) {
   const [lines, setLines] = useState<WhatsAppLine[]>(initialLines);
   const [isLoading, setIsLoading] = useState(false);
+  const [lineErrors, setLineErrors] = useState<Record<string, string>>({});
+  const [loadingLines, setLoadingLines] = useState<Set<string>>(new Set());
+  // Track when each line entered awaiting_qr state (to detect timeout)
+  const awaitingQrSince = useRef<Record<string, number>>({});
 
-  const fetchLines = async () => {
+  const fetchLines = useCallback(async () => {
     try {
       const res = await fetch('/api/whatsapp-lines');
       if (res.ok) {
-        const data = await res.json();
-        setLines(data);
+        const data: WhatsAppLine[] = await res.json();
+        setLines(prev => {
+          // Track when lines newly enter awaiting_qr state
+          data.forEach(line => {
+            if (line.status === 'awaiting_qr' && !line.qr_code) {
+              if (!awaitingQrSince.current[line.line_key]) {
+                awaitingQrSince.current[line.line_key] = Date.now();
+              }
+            } else {
+              // Reset timer if QR arrived or status changed
+              delete awaitingQrSince.current[line.line_key];
+            }
+          });
+          return data;
+        });
+
+        // Pull-fallback: for lines awaiting QR without one, try fetching directly from bridge
+        const awaitingWithoutQr = data.filter(l => l.status === 'awaiting_qr' && !l.qr_code);
+        for (const line of awaitingWithoutQr) {
+          const since = awaitingQrSince.current[line.line_key];
+          // Start pulling after 5 seconds, before timeout
+          if (since && Date.now() - since > 5000) {
+            fetch(`/api/whatsapp-lines/${line.line_key}/qr`)
+              .then(r => r.ok ? r.json() : null)
+              .catch(() => null);
+          }
+        }
       }
     } catch (e) {
-      console.error(e);
+      console.error('Error fetching lines:', e);
+    }
+  }, []);
+
+
+  // Poll only when there are lines in awaiting_qr state without a QR yet
+  useEffect(() => {
+    const hasAwaitingWithoutQr = lines.some(l => l.status === 'awaiting_qr');
+    if (!hasAwaitingWithoutQr) return;
+
+    const interval = setInterval(fetchLines, 3000);
+    return () => clearInterval(interval);
+  }, [lines, fetchLines]);
+
+  // Check for QR timeouts
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      forceUpdate(n => n + 1); // Trigger re-render to update timeout display
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const isQrTimedOut = (lineKey: string) => {
+    const since = awaitingQrSince.current[lineKey];
+    if (!since) return false;
+    return Date.now() - since > QR_TIMEOUT_MS;
+  };
+
+  const setLineLoading = (lineKey: string, loading: boolean) => {
+    setLoadingLines(prev => {
+      const next = new Set(prev);
+      if (loading) next.add(lineKey);
+      else next.delete(lineKey);
+      return next;
+    });
+  };
+
+  const clearLineError = (lineKey: string) => {
+    setLineErrors(prev => {
+      const next = { ...prev };
+      delete next[lineKey];
+      return next;
+    });
+  };
+
+  const handleConnect = async (lineKey: string) => {
+    clearLineError(lineKey);
+    setLineLoading(lineKey, true);
+    // Mark as awaiting immediately to show spinner
+    awaitingQrSince.current[lineKey] = Date.now();
+    try {
+      const displayName = lines.find(l => l.line_key === lineKey)?.display_name;
+      const res = await fetch('/api/whatsapp-lines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ line_key: lineKey, display_name: displayName }),
+      });
+      const data = await res.json();
+      if (data.bridgeError) {
+        setLineErrors(prev => ({ ...prev, [lineKey]: data.bridgeError }));
+        // Reset awaiting timer since bridge failed
+        delete awaitingQrSince.current[lineKey];
+      }
+      await fetchLines();
+    } catch (e: any) {
+      setLineErrors(prev => ({ ...prev, [lineKey]: e.message }));
+      delete awaitingQrSince.current[lineKey];
+    } finally {
+      setLineLoading(lineKey, false);
     }
   };
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    const hasAwaiting = lines.some(l => l.status === 'awaiting_qr');
-    
-    if (hasAwaiting) {
-      interval = setInterval(fetchLines, 3000);
-    }
-    
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [lines]);
-
-  const handleConnect = async (lineKey: string) => {
-    setIsLoading(true);
+  const handleRetryQr = async (lineKey: string) => {
+    // Reset the DB status to disconnected first, then reconnect
+    clearLineError(lineKey);
+    setLineLoading(lineKey, true);
     try {
-      await fetch('/api/whatsapp-lines', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ line_key: lineKey, display_name: lines.find(l => l.line_key === lineKey)?.display_name })
-      });
+      // Force disconnect to reset state
+      await fetch(`/api/whatsapp-lines/${lineKey}`, { method: 'DELETE' });
       await fetchLines();
+      // Small delay then reconnect
+      await new Promise(r => setTimeout(r, 1000));
+      await handleConnect(lineKey);
     } finally {
-      setIsLoading(false);
+      setLineLoading(lineKey, false);
     }
   };
 
   const handleDisconnect = async (lineKey: string) => {
-    setIsLoading(true);
+    setLineLoading(lineKey, true);
     try {
-      await fetch(`/api/whatsapp-lines/${lineKey}`, {
-        method: 'DELETE'
-      });
+      await fetch(`/api/whatsapp-lines/${lineKey}`, { method: 'DELETE' });
       await fetchLines();
     } finally {
-      setIsLoading(false);
+      setLineLoading(lineKey, false);
     }
   };
 
@@ -72,15 +160,19 @@ export default function ClientPage({ initialLines }: { initialLines: WhatsAppLin
     if (nextNum > 8) return alert('Máximo 8 líneas permitidas');
     const name = prompt('Nombre de la nueva línea:', `Línea ${nextNum}`);
     if (!name) return;
-    
+
     setIsLoading(true);
     try {
       const lineKey = `linea_${nextNum}`;
-      await fetch('/api/whatsapp-lines', {
+      const res = await fetch('/api/whatsapp-lines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ line_key: lineKey, display_name: name })
+        body: JSON.stringify({ line_key: lineKey, display_name: name }),
       });
+      const data = await res.json();
+      if (data.bridgeError) {
+        alert(`⚠️ Línea creada pero el bridge no respondió:\n\n${data.bridgeError}\n\nAsegúrate de que "node server.js" esté corriendo en la carpeta wa-server-knowledge.`);
+      }
       await fetchLines();
     } finally {
       setIsLoading(false);
@@ -104,72 +196,124 @@ export default function ClientPage({ initialLines }: { initialLines: WhatsAppLin
         </button>
       </div>
 
+      {/* Bridge Instructions Banner */}
+      <div className="p-4 rounded-xl border border-primary-500/20 bg-primary-500/5 text-xs text-slate-300 leading-relaxed">
+        <p className="font-semibold text-primary-300 mb-1">⚡ Requisito: Bridge WhatsApp activo</p>
+        <p>Para generar QR, el bridge debe estar corriendo. Abre una terminal en 
+          <code className="mx-1 px-1.5 py-0.5 bg-slate-800 rounded text-slate-200">wa-server-knowledge/</code> 
+          y ejecuta:
+          <code className="ml-1 px-2 py-0.5 bg-slate-800 rounded text-emerald-300">node server.js</code>
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {lines.map(line => (
-          <div key={line.id} className="glass p-5 rounded-2xl flex flex-col relative overflow-hidden group">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-sm font-semibold text-white">{line.display_name}</h3>
-                <p className="text-xs text-slate-400 mt-1">{line.phone_number || 'Sin número detectado'}</p>
-              </div>
-              <div className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-800/50">
-                <Phone size={16} className={line.status === 'connected' ? 'text-green-400' : 'text-slate-500'} />
-              </div>
-            </div>
+        {lines.map(line => {
+          const isLineLoading = loadingLines.has(line.line_key);
+          const lineError = lineErrors[line.line_key];
+          const timedOut = isQrTimedOut(line.line_key);
+          const waitingForQr = line.status === 'awaiting_qr' && !line.qr_code;
 
-            <div className="flex-1 min-h-[160px] flex items-center justify-center border border-white/5 bg-slate-950/30 rounded-xl mb-4 p-2 relative">
-              {line.status === 'awaiting_qr' && line.qr_code ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={line.qr_code} alt="QR Code" className="w-full h-auto rounded-lg" />
-              ) : line.status === 'awaiting_qr' ? (
-                 <div className="flex flex-col items-center gap-2 text-slate-400">
-                   <SpinnerGap size={24} className="animate-spin text-primary-400" />
-                   <span className="text-xs">Generando QR...</span>
-                 </div>
-              ) : line.status === 'connected' ? (
-                <div className="flex flex-col items-center gap-2 text-green-400/80">
-                  <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center mb-1">
-                    <Plug size={24} weight="fill" />
+          return (
+            <div key={line.id} className="glass p-5 rounded-2xl flex flex-col relative overflow-hidden group">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-white">{line.display_name}</h3>
+                  <p className={`text-xs mt-1 ${line.phone_number ? 'text-emerald-400' : 'text-slate-400'}`}>
+                    {line.phone_number || 'Sin número detectado'}
+                  </p>
+                </div>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  line.status === 'connected' ? 'bg-emerald-500/20' : 'bg-slate-800/50'
+                }`}>
+                  <Phone size={16} className={line.status === 'connected' ? 'text-emerald-400' : 'text-slate-500'} />
+                </div>
+              </div>
+
+              {/* QR / Status Area */}
+              <div className="flex-1 min-h-[160px] flex items-center justify-center border border-white/5 bg-slate-950/30 rounded-xl mb-4 p-2 relative">
+                {lineError ? (
+                  <div className="flex flex-col items-center gap-2 text-center px-2">
+                    <Warning size={24} className="text-rose-400" weight="fill" />
+                    <p className="text-[10px] text-rose-300 leading-relaxed">{lineError}</p>
                   </div>
-                  <span className="text-xs font-medium">Línea en Servicio</span>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-2 text-slate-500">
-                  <QrCode size={32} weight="light" />
-                  <span className="text-xs">Desconectada</span>
-                </div>
-              )}
-            </div>
+                ) : line.status === 'awaiting_qr' && line.qr_code ? (
+                  // QR received — show it
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={line.qr_code} alt="QR Code" className="w-full h-auto rounded-lg" />
+                ) : waitingForQr && timedOut ? (
+                  // Timed out waiting for QR
+                  <div className="flex flex-col items-center gap-2 text-center px-2">
+                    <Warning size={24} className="text-amber-400" weight="fill" />
+                    <p className="text-[10px] text-amber-300 leading-relaxed">
+                      El bridge tardó demasiado. ¿Está corriendo <code className="bg-slate-800 px-1 rounded">node server.js</code>?
+                    </p>
+                  </div>
+                ) : waitingForQr ? (
+                  // Waiting for QR from bridge
+                  <div className="flex flex-col items-center gap-2 text-slate-400">
+                    <SpinnerGap size={24} className="animate-spin text-primary-400" />
+                    <span className="text-xs">Generando QR...</span>
+                    <span className="text-[10px] text-slate-500">Puede tomar 10-30 segundos</span>
+                  </div>
+                ) : line.status === 'connected' ? (
+                  <div className="flex flex-col items-center gap-2 text-emerald-400/80">
+                    <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center mb-1">
+                      <Plug size={24} weight="fill" />
+                    </div>
+                    <span className="text-xs font-medium">Línea en Servicio</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-2 text-slate-500">
+                    <QrCode size={32} weight="light" />
+                    <span className="text-xs">Desconectada</span>
+                  </div>
+                )}
+              </div>
 
-            <div className="mt-auto">
-              {line.status === 'connected' ? (
-                <button
-                  onClick={() => handleDisconnect(line.line_key)}
-                  disabled={isLoading}
-                  className="w-full py-2.5 rounded-xl text-xs font-semibold bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
-                >
-                  Desconectar
-                </button>
-              ) : line.status === 'disconnected' ? (
-                <button
-                  onClick={() => handleConnect(line.line_key)}
-                  disabled={isLoading}
-                  className="w-full py-2.5 rounded-xl text-xs font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition-colors"
-                >
-                  Solicitar QR
-                </button>
-              ) : (
-                <button
-                  disabled
-                  className="w-full py-2.5 rounded-xl text-xs font-semibold bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 cursor-wait flex items-center justify-center gap-2"
-                >
-                  <SpinnerGap size={14} className="animate-spin" />
-                  Esperando Escaneo
-                </button>
-              )}
+              {/* Action Button */}
+              <div className="mt-auto space-y-2">
+                {line.status === 'connected' ? (
+                  <button
+                    onClick={() => handleDisconnect(line.line_key)}
+                    disabled={isLineLoading}
+                    className="w-full py-2.5 rounded-xl text-xs font-semibold bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2"
+                  >
+                    {isLineLoading ? <SpinnerGap size={14} className="animate-spin" /> : null}
+                    Desconectar
+                  </button>
+                ) : line.status === 'disconnected' || lineError ? (
+                  <button
+                    onClick={() => handleConnect(line.line_key)}
+                    disabled={isLineLoading}
+                    className="w-full py-2.5 rounded-xl text-xs font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition-colors flex items-center justify-center gap-2"
+                  >
+                    {isLineLoading ? <SpinnerGap size={14} className="animate-spin" /> : null}
+                    {lineError ? 'Reintentar' : 'Solicitar QR'}
+                  </button>
+                ) : waitingForQr && timedOut ? (
+                  // Show retry button on timeout
+                  <button
+                    onClick={() => handleRetryQr(line.line_key)}
+                    disabled={isLineLoading}
+                    className="w-full py-2.5 rounded-xl text-xs font-semibold bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 transition-colors flex items-center justify-center gap-2"
+                  >
+                    {isLineLoading ? <SpinnerGap size={14} className="animate-spin" /> : <ArrowCounterClockwise size={14} />}
+                    Reintentar
+                  </button>
+                ) : (
+                  // Waiting for QR (not timed out yet)
+                  <button
+                    disabled
+                    className="w-full py-2.5 rounded-xl text-xs font-semibold bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 cursor-wait flex items-center justify-center gap-2"
+                  >
+                    <SpinnerGap size={14} className="animate-spin" />
+                    Esperando Escaneo
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {lines.length === 0 && (
           <div className="col-span-full glass p-8 rounded-2xl text-center border border-dashed border-white/10">
