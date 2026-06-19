@@ -176,25 +176,7 @@ export default function IntegrationsClientPage({
             </Link>
           </div>
 
-          {/* Provider Selector Tabs */}
-          <div className="flex p-1 rounded-xl bg-slate-900 border border-white/5">
-            <button
-              onClick={() => setProvider('openwa')}
-              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-colors ${
-                provider === 'openwa' ? 'bg-primary-600 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              OpenWA (Local/Pruebas)
-            </button>
-            <button
-              onClick={() => setProvider('meta')}
-              className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-colors ${
-                provider === 'meta' ? 'bg-primary-600 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Meta Cloud API (Producción)
-            </button>
-          </div>
+          {/* Legacy single-line configuration removed to avoid confusion. All WhatsApp configuration is now done in the Gestor Multi-Línea */}
 
           {waError && (
             <div className="p-3 rounded-xl text-sm" style={{ background: 'rgba(244, 63, 94, 0.1)', border: '1px solid rgba(244, 63, 94, 0.2)', color: '#fb7185' }}>
@@ -209,73 +191,11 @@ export default function IntegrationsClientPage({
           )}
 
           <form onSubmit={handleWaSubmit} className="space-y-4">
-            {provider === 'openwa' ? (
-              <>
-                {/* Status Indicator */}
-                <div className="p-4 rounded-xl border flex items-center justify-between transition-colors bg-slate-900/40 border-white/5">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                      isConnected ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
-                    }`}>
-                      {isConnected ? <WifiHigh size={20} /> : <WifiSlash size={20} />}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-white">
-                        {isConnected ? 'WhatsApp Conectado' : 'WhatsApp Desconectado'}
-                      </p>
-                      <p className="text-xs" style={{ color: 'rgba(148, 163, 184, 0.5)' }}>
-                        {isConnected 
-                          ? 'El robot está activo y procesando mensajes localmente.' 
-                          : 'El servidor local no responde. Ejecuta node server.js en tu consola.'}
-                      </p>
-                    </div>
-                  </div>
-                  {checkingStatus && (
-                    <SpinnerGap size={16} className="animate-spin text-slate-500" />
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: 'rgba(148, 163, 184, 0.5)' }}>
-                    URL de la API de OpenWA (Bloqueado)
-                  </label>
-                  <input
-                    name="openwaApiUrl"
-                    type="url"
-                    defaultValue={initialWaConfig?.openwa_api_url || 'http://localhost:2785'}
-                    disabled={true}
-                    className="input text-sm opacity-60 cursor-not-allowed select-none bg-slate-950"
-                    placeholder="http://localhost:2785"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: 'rgba(148, 163, 184, 0.5)' }}>
-                    ID de Sesión (Session ID) (Bloqueado)
-                  </label>
-                  <input
-                    name="openwaSessionId"
-                    type="text"
-                    defaultValue={initialWaConfig?.openwa_session_id || 'default'}
-                    disabled={true}
-                    className="input text-sm opacity-60 cursor-not-allowed select-none bg-slate-950"
-                    placeholder="default"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: 'rgba(148, 163, 184, 0.5)' }}>
-                    API Key de OpenWA (Opcional) (Bloqueado)
-                  </label>
-                  <input
-                    name="openwaApiKey"
-                    type="password"
-                    defaultValue={initialWaConfig?.openwa_api_key || ''}
-                    disabled={true}
-                    className="input text-sm opacity-60 cursor-not-allowed select-none bg-slate-950"
-                    placeholder="Sin API Key configurada"
-                  />
-                </div>
-              </>
-            ) : (
+            {/* Meta Cloud API (Solo lectura o legacy) */}
+            <div className="p-3 bg-slate-800/50 rounded-lg mb-4">
+               <p className="text-xs text-slate-400">Si utilizas Meta Cloud API Oficial, configura los parámetros a continuación. Para conexiones estándar, utiliza el <strong>Gestor Multi-Línea</strong> arriba.</p>
+            </div>
+            {provider === 'meta' && (
               <>
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'rgba(148, 163, 184, 0.7)' }}>Identificador de Número de Teléfono (Phone ID)</label>
