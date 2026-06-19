@@ -41,10 +41,20 @@ export async function GET(
     }
 
     const bridgeData = await bridgeRes.json();
+    const adminSupabase = createAdminClient();
+
+    // If the bridge reports the session is already connected, sync the DB state.
+    // This fixes lines stuck in 'awaiting_qr' even though WhatsApp is already linked.
+    if (bridgeData.status === 'connected') {
+      await (adminSupabase as any)
+        .from('whatsapp_lines')
+        .update({ status: 'connected', qr_code: null })
+        .eq('line_key', line_key);
+      return NextResponse.json({ status: 'connected', qr: null });
+    }
 
     // If QR was returned, save it to DB so the panel can show it
     if (bridgeData.qr) {
-      const adminSupabase = createAdminClient();
       await (adminSupabase as any)
         .from('whatsapp_lines')
         .update({ status: 'awaiting_qr', qr_code: bridgeData.qr })

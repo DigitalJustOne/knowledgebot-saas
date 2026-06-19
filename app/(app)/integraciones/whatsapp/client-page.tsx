@@ -63,6 +63,24 @@ export default function ClientPage({ initialLines }: { initialLines: WhatsAppLin
     }
   }, []);
 
+  // Sync DB state with the REAL bridge state on load and periodically.
+  // Fixes lines stuck in 'awaiting_qr' that are actually connected (or vice versa).
+  const syncWithBridge = useCallback(async () => {
+    try {
+      await fetch('/api/whatsapp-lines/sync');
+      await fetchLines();
+    } catch (e) {
+      console.error('Error syncing with bridge:', e);
+    }
+  }, [fetchLines]);
+
+  // On mount: sync once, then poll for QRs
+  useEffect(() => {
+    syncWithBridge();
+    const syncInterval = setInterval(syncWithBridge, 30000); // every 30s
+    return () => clearInterval(syncInterval);
+  }, [syncWithBridge]);
+
 
   // Poll only when there are lines in awaiting_qr state without a QR yet
   useEffect(() => {
@@ -229,7 +247,13 @@ export default function ClientPage({ initialLines }: { initialLines: WhatsAppLin
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {lines.slice(0, MAX_LINES).map(line => {
+        {/* Show only meaningful lines: connected, awaiting QR, or with a phone number.
+            Empty/disconnected lines created in bulk are hidden to reduce clutter. */}
+        {lines.filter(line =>
+          line.status === 'connected' ||
+          line.status === 'awaiting_qr' ||
+          line.phone_number
+        ).map(line => {
           const isLineLoading = loadingLines.has(line.line_key);
           const lineError = lineErrors[line.line_key];
           const timedOut = isQrTimedOut(line.line_key);
