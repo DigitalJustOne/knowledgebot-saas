@@ -12,6 +12,9 @@ interface WhatsAppLine {
   qr_code: string | null;
 }
 
+// Number of WhatsApp lines visible in the panel. Set MAX_WHATSAPP_LINES env to increase.
+const MAX_LINES = Number(process.env.NEXT_PUBLIC_MAX_WHATSAPP_LINES || 3);
+
 // Track how long each line has been in awaiting_qr without a QR
 const QR_TIMEOUT_MS = 35_000; // 35 seconds
 
@@ -155,9 +158,28 @@ export default function ClientPage({ initialLines }: { initialLines: WhatsAppLin
     }
   };
 
+  // Refresh a QR: pull the latest QR directly from the bridge (for expired QRs)
+  const handleRefreshQr = async (lineKey: string) => {
+    setLineLoading(lineKey, true);
+    clearLineError(lineKey);
+    try {
+      const res = await fetch(`/api/whatsapp-lines/${lineKey}/qr`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setLineErrors(prev => ({ ...prev, [lineKey]: errData.error || `Error ${res.status}` }));
+      } else {
+        await fetchLines();
+      }
+    } catch (e: any) {
+      setLineErrors(prev => ({ ...prev, [lineKey]: e.message }));
+    } finally {
+      setLineLoading(lineKey, false);
+    }
+  };
+
   const handleAddLine = async () => {
     const nextNum = lines.length + 1;
-    if (nextNum > 8) return alert('Máximo 8 líneas permitidas');
+    if (nextNum > MAX_LINES) return alert(`Máximo ${MAX_LINES} líneas permitidas`);
     const name = prompt('Nombre de la nueva línea:', `Línea ${nextNum}`);
     if (!name) return;
 
@@ -184,11 +206,11 @@ export default function ClientPage({ initialLines }: { initialLines: WhatsAppLin
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-white tracking-tight">Líneas de WhatsApp</h1>
-          <p className="text-sm text-slate-400 mt-1">Administra hasta 8 sesiones independientes en tu panel.</p>
+          <p className="text-sm text-slate-400 mt-1">Administra hasta {MAX_LINES} sesiones independientes en tu panel.</p>
         </div>
         <button
           onClick={handleAddLine}
-          disabled={lines.length >= 8 || isLoading}
+          disabled={lines.length >= MAX_LINES || isLoading}
           className="btn-primary flex items-center gap-2"
         >
           <Plus size={18} weight="bold" />
@@ -207,7 +229,7 @@ export default function ClientPage({ initialLines }: { initialLines: WhatsAppLin
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {lines.map(line => {
+        {lines.slice(0, MAX_LINES).map(line => {
           const isLineLoading = loadingLines.has(line.line_key);
           const lineError = lineErrors[line.line_key];
           const timedOut = isQrTimedOut(line.line_key);
@@ -279,8 +301,30 @@ export default function ClientPage({ initialLines }: { initialLines: WhatsAppLin
                     className="w-full py-2.5 rounded-xl text-xs font-semibold bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2"
                   >
                     {isLineLoading ? <SpinnerGap size={14} className="animate-spin" /> : null}
-                    Desconectar
+                    Desvincular número
                   </button>
+                ) : line.status === 'awaiting_qr' && line.qr_code ? (
+                  // QR showing — offer refresh (QRs expire ~60s)
+                  <>
+                    <div className="text-[10px] text-amber-400/80 text-center -mb-1">
+                      ⏱ Si no escanea pronto, el QR expira. Refresca.
+                    </div>
+                    <button
+                      onClick={() => handleRefreshQr(line.line_key)}
+                      disabled={isLineLoading}
+                      className="w-full py-2.5 rounded-xl text-xs font-semibold bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 border border-amber-500/20 transition-colors flex items-center justify-center gap-2"
+                    >
+                      {isLineLoading ? <SpinnerGap size={14} className="animate-spin" /> : <ArrowCounterClockwise size={14} />}
+                      Refrescar QR
+                    </button>
+                    <button
+                      onClick={() => handleDisconnect(line.line_key)}
+                      disabled={isLineLoading}
+                      className="w-full py-2 rounded-xl text-[11px] font-medium bg-slate-800/40 text-slate-400 hover:bg-slate-700/40 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </>
                 ) : line.status === 'disconnected' || lineError ? (
                   <button
                     onClick={() => handleConnect(line.line_key)}
