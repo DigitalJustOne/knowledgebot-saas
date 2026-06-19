@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getBridgeUrl, bridgeHeaders } from '@/lib/whatsapp/bridge';
 
 /**
  * GET /api/whatsapp-lines/[line_key]/qr
@@ -26,20 +27,12 @@ export async function GET(
       .single();
     if (!profile) return NextResponse.json({ error: 'No org' }, { status: 401 });
 
-    // Get bridge URL
-    const { data: waConfig } = await (supabase as any)
-      .from('whatsapp_configs')
-      .select('openwa_api_url, openwa_api_key')
-      .eq('organization_id', profile.organization_id)
-      .single();
-
-    const rawUrl = waConfig?.openwa_api_url || 'http://localhost:3004';
-    const baseUrl = rawUrl.replace(':2785', ':3004').replace(':3003', ':3004');
-    const apiKey = waConfig?.openwa_api_key || '';
+    // Bridge URL + key come from env (WHATSAPP_BRIDGE_URL / BRIDGE_API_KEY)
+    const baseUrl = getBridgeUrl();
 
     // Pull QR from bridge
     const bridgeRes = await fetch(`${baseUrl}/api/sessions/${line_key}/qr`, {
-      headers: apiKey ? { 'X-API-Key': apiKey } : {},
+      headers: bridgeHeaders({ 'Content-Type': 'application/json' }),
       signal: AbortSignal.timeout(5000),
     });
 
@@ -62,7 +55,7 @@ export async function GET(
   } catch (err: any) {
     if (err.name === 'TimeoutError' || err.code === 'ECONNREFUSED') {
       return NextResponse.json({
-        error: 'No se pudo contactar el bridge. ¿Está corriendo "node server.js" en wa-server-knowledge?'
+        error: 'No se pudo contactar el bridge. Revisa WHATSAPP_BRIDGE_URL y que el servicio esté activo.'
       }, { status: 502 });
     }
     return NextResponse.json({ error: err.message }, { status: 500 });

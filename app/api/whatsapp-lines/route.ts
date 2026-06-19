@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getBridgeUrl, bridgeHeaders } from '@/lib/whatsapp/bridge';
 
 export async function GET(request: NextRequest) {
   try {
@@ -62,25 +63,15 @@ export async function POST(request: NextRequest) {
       
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // Call bridge to start session
-    const { data: waConfig } = await (supabase as any)
-      .from('whatsapp_configs')
-      .select('openwa_api_url, openwa_api_key')
-      .eq('organization_id', profile.organization_id)
-      .single();
-
-    // The bridge runs on port 3004 by default. The whatsapp_configs table may store
-    // an old URL from the legacy single-session setup. Always use port 3004 for multi-line.
-    const rawUrl = waConfig?.openwa_api_url || 'http://localhost:3004';
-    // Normalize: if the stored URL points to the old port 2785, correct it to 3004
-    const baseUrl = rawUrl.replace(':2785', ':3004').replace(':3003', ':3004');
-    const apiKey = waConfig?.openwa_api_key || '';
+    // Call bridge to start session. URL + key come from env (WHATSAPP_BRIDGE_URL / BRIDGE_API_KEY)
+    // so this works in Railway where each service has its own container.
+    const baseUrl = getBridgeUrl();
 
     let bridgeError: string | null = null;
     try {
       const bridgeRes = await fetch(`${baseUrl}/api/sessions/${line_key}/start`, {
         method: 'POST',
-        headers: apiKey ? { 'X-API-Key': apiKey, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' },
+        headers: bridgeHeaders(),
         signal: AbortSignal.timeout(8000), // 8 second timeout
       });
       if (!bridgeRes.ok) {
@@ -89,7 +80,7 @@ export async function POST(request: NextRequest) {
         console.error('Bridge start error:', bridgeError);
       }
     } catch (e: any) {
-      bridgeError = `No se pudo contactar el bridge en ${baseUrl}. ¿Está corriendo "node server.js" en wa-server-knowledge?`;
+      bridgeError = `No se pudo contactar el bridge en ${baseUrl}. Revisa WHATSAPP_BRIDGE_URL y que el servicio esté activo.`;
       console.error('Bridge start failed:', e.message);
     }
 

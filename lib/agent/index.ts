@@ -109,7 +109,6 @@ export async function runAgentForMessage(params: {
     const contactMetadata = contactResult.data?.metadata || {};
 
     const systemPrompt = buildSystemPrompt(agentConfig, contactName, contactPhone, timeZone, contactMetadata);
-    require('fs').writeFileSync('system_prompt_debug.txt', systemPrompt);
 
     const toolContext = { orgId, contactPhone, contactName, conversationId };
 
@@ -131,8 +130,7 @@ export async function runAgentForMessage(params: {
       temperature: 0.4,
     } as any);
 
-    const logMsg = `\n[${new Date().toISOString()}] Agent finished. Steps: ${result.steps?.length || 0}. Final text: ${result.text}`;
-    try { require('fs').appendFileSync('agent_calls.log', logMsg + '\n'); } catch (e) {}
+    logger.info('Agent finished', { orgId, conversationId, steps: result.steps?.length || 0 });
 
     const responseText = result.text;
     if (!responseText?.trim()) {

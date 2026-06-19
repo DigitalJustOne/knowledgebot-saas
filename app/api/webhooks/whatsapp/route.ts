@@ -7,6 +7,7 @@ import { runAgentForMessage } from '@/lib/agent';
 import { decrypt } from '@/lib/crypto';
 import { createHmac } from 'crypto';
 import { logger } from '@/lib/logger';
+import { getBridgeApiKey } from '@/lib/whatsapp/bridge';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -61,6 +62,13 @@ export async function POST(request: NextRequest) {
       if (isMeta) {
         await processMetaWebhook(body, request, supabase);
       } else if (isOpenWA) {
+        // Verify bridge identity: the bridge sends x-bridge-key header
+        const expectedKey = getBridgeApiKey();
+        const incomingKey = request.headers.get('x-bridge-key') || '';
+        if (expectedKey && incomingKey !== expectedKey) {
+          logger.warn('Webhook rejected: invalid bridge key', { hasKey: !!incomingKey });
+          return;
+        }
         await processOpenWAWebhook(body, supabase);
       }
     } catch (err) {

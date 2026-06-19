@@ -2,6 +2,7 @@ import { GRAPH_API_BASE, type NormalizedMessage, type WhatsAppProvider } from '.
 import { decrypt } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
 import type { WhatsAppConfig } from '@/lib/database.types';
+import { getBridgeUrl, bridgeHeaders } from './bridge';
 
 /** Abstract adapter interface for WhatsApp messaging */
 export interface WhatsAppAdapter {
@@ -68,9 +69,8 @@ export function createMetaAdapter(config: WhatsAppConfig): WhatsAppAdapter {
 
 /** OpenWA adapter for testing */
 export function createOpenWAAdapter(config: WhatsAppConfig, lineKey?: string | null): WhatsAppAdapter {
-  const baseUrl = config.openwa_api_url || 'http://localhost:2785';
+  const baseUrl = getBridgeUrl();
   const sessionId = lineKey || config.openwa_session_id || 'default';
-  const apiKey = config.openwa_api_key || '';
 
   return {
     async sendTextMessage(to: string, text: string): Promise<string | null> {
@@ -81,10 +81,7 @@ export function createOpenWAAdapter(config: WhatsAppConfig, lineKey?: string | n
           `${baseUrl}/api/sessions/${sessionId}/messages/send-text`,
           {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-API-Key': apiKey,
-            },
+            headers: bridgeHeaders(),
             body: JSON.stringify({ chatId, text }),
           }
         );

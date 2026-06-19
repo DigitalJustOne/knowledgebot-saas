@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getBridgeUrl, bridgeHeaders } from '@/lib/whatsapp/bridge';
 
 export async function DELETE(
   request: NextRequest,
@@ -30,21 +31,14 @@ export async function DELETE(
       .update({ status: 'disconnected', qr_code: null })
       .eq('line_key', line_key);
 
-    // Get config for openwa URL
-    const { data: waConfig } = await (adminSupabase as any)
-      .from('whatsapp_configs')
-      .select('openwa_api_url, openwa_api_key')
-      .eq('organization_id', line.organization_id)
-      .single();
-
-    const baseUrl = waConfig?.openwa_api_url || 'http://localhost:3004';
-    const apiKey = waConfig?.openwa_api_key || '';
+    // Bridge URL + key come from env (WHATSAPP_BRIDGE_URL / BRIDGE_API_KEY).
+    const baseUrl = getBridgeUrl();
 
     // Send logout request to bridge
     try {
       await fetch(`${baseUrl}/api/sessions/${line_key}/logout`, {
         method: 'POST',
-        headers: apiKey ? { 'X-API-Key': apiKey } : {}
+        headers: bridgeHeaders(),
       });
     } catch (e) {
        console.error('Bridge logout failed', e);

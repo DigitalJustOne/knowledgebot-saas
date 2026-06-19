@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createAdapter, type WhatsAppAdapter } from './adapter';
+import { getBridgeUrl, bridgeHeaders } from './bridge';
 import { logger } from '@/lib/logger';
 import type { NormalizedMessage } from './config';
 import type { WhatsAppConfig, AgentConfig } from '@/lib/database.types';
@@ -114,15 +115,14 @@ export async function processInboundMessage(
       const hasNoHistoryInDb = count === 0;
 
       if (hasNoHistoryInDb && waConfig.provider === 'openwa') {
-        const baseUrl = waConfig.openwa_api_url || 'http://localhost:3004';
+        const baseUrl = getBridgeUrl();
         const sessionId = waConfig.openwa_session_id || 'default';
-        const apiKey = waConfig.openwa_api_key || '';
         
         // Fetch last 15 messages for context
         const res = await fetch(
           `${baseUrl}/api/sessions/${sessionId}/chats/${message.from}/history?limit=15`,
           {
-            headers: apiKey ? { 'X-API-Key': apiKey } : {}
+            headers: bridgeHeaders({}),
           }
         );
         

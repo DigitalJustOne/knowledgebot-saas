@@ -4,6 +4,7 @@ import { createAdminClient as createClient } from '@/lib/supabase/server';
 import { encrypt } from '@/lib/crypto';
 import { getGoogleAuthUrl, exchangeCodeForTokens } from '@/lib/google/calendar';
 import { redirect } from 'next/navigation';
+import { getBridgeUrl, bridgeHeaders } from '@/lib/whatsapp/bridge';
 
 export async function saveWhatsAppConfigAction(formData: FormData) {
   const supabase = await createClient();
@@ -109,22 +110,13 @@ export async function disconnectWhatsAppAction() {
   const { getCurrentUser } = await import('@/lib/auth/actions');
   const profile = await getCurrentUser();
   if (!profile) return { error: 'Organización no encontrada' };
-  const orgId = profile.organization_id;
 
-  const { data: waConfig } = await (supabase as any)
-    .from('whatsapp_configs')
-    .select('*')
-    .eq('organization_id', orgId)
-    .single();
-
-  if (!waConfig || !waConfig.openwa_api_url) {
-    return { error: 'No hay configuración de WhatsApp Local (OpenWA) activa.' };
-  }
+  const baseUrl = getBridgeUrl();
 
   try {
-    const res = await fetch(`${waConfig.openwa_api_url}/api/sessions/logout`, {
+    const res = await fetch(`${baseUrl}/api/sessions/logout`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: bridgeHeaders(),
       body: JSON.stringify({}),
     });
     const data = await res.json();
@@ -133,36 +125,22 @@ export async function disconnectWhatsAppAction() {
     }
     return { success: true };
   } catch (e: any) {
-    return { error: e.message || 'No se pudo conectar con el servidor local. Asegúrate de que node server.js esté corriendo.' };
+    return { error: e.message || 'No se pudo conectar con el bridge. Revisa WHATSAPP_BRIDGE_URL.' };
   }
 }
 
 export async function checkWhatsAppStatusAction() {
-  const supabase = await createClient();
   const { getCurrentUser } = await import('@/lib/auth/actions');
   const profile = await getCurrentUser();
   if (!profile) return { connected: false };
-  const orgId = profile.organization_id;
 
-  const { data: waConfig } = await (supabase as any)
-    .from('whatsapp_configs')
-    .select('openwa_api_url, provider')
-    .eq('organization_id', orgId)
-    .single();
-
-  if (!waConfig || waConfig.provider !== 'openwa' || !waConfig.openwa_api_url) {
-    return { connected: false };
-  }
+  const baseUrl = getBridgeUrl();
 
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1500);
     
-    // Convert localhost to 127.0.0.1 to avoid IPv6 issues in Node 18+
-    const fetchUrl = waConfig.openwa_api_url.replace('localhost', '127.0.0.1');
-    
-    // We request the base URL. If the server is up it will return 404/200, which is enough to prove it is alive.
-    const res = await fetch(fetchUrl, {
+    const res = await fetch(`${baseUrl}/health`, {
       signal: controller.signal
     }).catch(() => null);
     

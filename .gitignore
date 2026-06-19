@@ -39,3 +39,29 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Logs and debug artifacts (never in repo)
+*.log
+agent_calls.log
+system_prompt_debug.txt
+test_raw.log
+test_sheets.txt
+output.json
+
+# Local catalog data files (data lives in Supabase, not in repo)
+/*.csv
+/cuadernos/*.csv
+/catalog/
+/scratch/
+
+# Local one-off scripts and helpers (kept on disk, not tracked)
+/fix_*.js
+/test*.js
+/check_*.js
+/query_*.js
+/runner.js
+/update_bridge_url.js
+/update_*.js
+/set_sheet_id.js
+/copy_sheets_integration.js
+/sync_handoff.js

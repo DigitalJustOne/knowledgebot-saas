@@ -1,7 +1,6 @@
 import { tool, jsonSchema } from 'ai';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
-import * as fs from 'fs';
 
 export function searchCatalogTool() {
   return tool({
@@ -19,9 +18,6 @@ export function searchCatalogTool() {
     }),
     execute: async (args: any) => {
       const query = String(args.query || '').trim();
-      
-      const logMessage = `\n[${new Date().toISOString()}] [TOOL CALL] searchCatalogTool: query="${query}"`;
-      try { fs.appendFileSync('agent_calls.log', logMessage + '\n'); } catch(e) {}
 
       if (!query) {
         return { success: false, error: 'Debes enviar un termino de busqueda.' };
@@ -37,8 +33,7 @@ export function searchCatalogTool() {
           return { success: false, error: `Error al buscar: ${error.message}` };
         }
 
-        const resultLog = `[RESULT] searchCatalogTool: ${data?.length || 0} resultado(s)\n`;
-        try { fs.appendFileSync('agent_calls.log', resultLog); } catch(e) {}
+        logger.info('Search catalog result', { query, count: data?.length || 0 });
 
         if (!data || data.length === 0) {
           return {

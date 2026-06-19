@@ -1,26 +1,10 @@
 import { tool, jsonSchema } from 'ai';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
-import { pipeline } from '@xenova/transformers';
+import { embedText } from '@/lib/embeddings';
 
 interface ToolContext {
   orgId: string;
-}
-
-// Global variable to cache the extractor so it doesn't load every time
-let extractorCache: any = null;
-
-async function getExtractor() {
-  if (!extractorCache) {
-    extractorCache = await pipeline('feature-extraction', 'Xenova/paraphrase-multilingual-MiniLM-L12-v2');
-  }
-  return extractorCache;
-}
-
-async function createQueryEmbedding(input: string): Promise<number[]> {
-  const extractor = await getExtractor();
-  const output = await extractor(input, { pooling: 'mean', normalize: true });
-  return Array.from(output.data);
 }
 
 export function queryKnowledgeBaseTool(ctx: ToolContext) {
@@ -48,21 +32,37 @@ export function queryKnowledgeBaseTool(ctx: ToolContext) {
     }),
     execute: async (args: any) => {
       const query = String(args.query || '').trim();
-      const limit = Math.min(Math.max(Number(args.limit || 30), 1), 30);
+      const limit = Math.min(Math.max(Number(args.limit || 8), 1), 30);
       const tags = Array.isArray(args.tags) ? args.tags.filter(Boolean).map(String) : null;
-      const threshold = 0.05; // Hardcoded to very low to prevent filtering
-      const fs = require('fs');
-
-      const logMessage = `\n[${new Date().toISOString()}] [TOOL CALL] queryKnowledgeBase: query="${query}", limit=${limit}`;
-      try { fs.appendFileSync('agent_calls.log', logMessage + '\n'); } catch(e) {}
+      const threshold = Number(process.env.RAG_MATCH_THRESHOLD) || 0.35;
 
       if (!query) {
         return { success: false, error: 'Debes enviar una pregunta o termino de busqueda.' };
       }
 
+      logger.info('queryKnowledgeBase called', { orgId: ctx.orgId, query, limit, threshold });
+
       try {
         const supabase = createAdminClient();
-        const embedding = await createQueryEmbedding(query);
+
+        // Defensive: verify there are chunks to search. The knowledge base is OPTIONAL —
+        // the catalog (products table) is the primary source and does not use this tool.
+        const { count } = await (supabase as any)
+          .from('knowledge_chunks')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', ctx.orgId);
+
+        if (!count || count === 0) {
+          return {
+            success: false,
+            query,
+            records: [],
+            note: 'La base de conocimiento documental esta vacia. Para productos y precios usa SIEMPRE las herramientas searchCatalog y getProductPrice. Para politicas o info de la empresa, responde con lo que sepas del system prompt o escala a un humano.',
+          };
+        }
+
+        // Generate the query embedding via the OpenAI-compatible API.
+        const embedding = await embedText(query);
 
         const { data, error } = await (supabase as any).rpc('match_knowledge_chunks', {
           target_organization_id: ctx.orgId,
@@ -77,7 +77,7 @@ export function queryKnowledgeBaseTool(ctx: ToolContext) {
           return { success: false, error: `Error al consultar la base de conocimiento: ${error.message}` };
         }
 
-        let records = (data || []).map((row: any) => ({
+        const records = (data || []).map((row: any) => ({
           id: row.chunk_id,
           documentId: row.document_id,
           title: row.document_title,
@@ -88,52 +88,25 @@ export function queryKnowledgeBaseTool(ctx: ToolContext) {
           metadata: row.metadata || {},
         }));
 
-        // SIEMPRE hacer busqueda hibrida para asegurar resultados exactos
-        const keywords = query.split(' ').filter((w: string) => w.length > 3);
-        if (keywords.length > 0) {
-          const orQuery = keywords.map(kw => `content.ilike.%${kw}%`).join(',');
-          const { data: textData } = await (supabase as any)
-            .from('knowledge_chunks')
-            .select('*')
-            .eq('organization_id', ctx.orgId)
-            .or(orQuery)
-            .limit(10);
-          if (textData) {
-            for (const row of textData) {
-              if (!records.find((r: any) => r.id === row.id)) {
-                records.push({
-                  id: row.id,
-                  documentId: row.document_id,
-                  title: 'Búsqueda por palabra clave',
-                  sourceUrl: '',
-                  content: row.content,
-                  similarity: 1.0,
-                  tags: [],
-                  metadata: {}
-                });
-              }
-            }
-          }
-        }
-
-
-
-        const resultLog = `[RESULT] queryKnowledgeBase: ${records.length} resultado(s) para query="${query}"\n`;
-        try { fs.appendFileSync('agent_calls.log', resultLog); } catch(e) {}
+        logger.info('Knowledge base query result', { orgId: ctx.orgId, query, count: records.length });
 
         return {
           success: true,
           query,
           records,
           note: records.length > 0
-            ? 'Usa solo estos fragmentos para responder. NOTA: Las tablas estan separadas por |. La primera fila son las cantidades (ej. 6 | 12 | 30). Las filas siguientes tienen el producto y sus precios bajo cada cantidad (ej. Dril Bordada | 20000 | 15000 significa que 6 cuestan 20000 cada una, 12 cuestan 15000, etc.). Si falta un dato especifico, dilo.'
+            ? 'Usa solo estos fragmentos para responder. Si falta un dato especifico, dilo.'
             : 'No se encontro informacion confiable en la base de conocimiento para esta pregunta.',
         };
       } catch (err: any) {
         logger.error('Knowledge base query error', { error: String(err) });
-        const errMsg = `[ERROR] queryKnowledgeBase: ${err.message || String(err)}\n`;
-        try { fs.appendFileSync('agent_calls.log', errMsg); } catch(e) {}
-        return { success: false, error: err.message || String(err) };
+        // Fail gracefully: tell the agent to fall back to catalog tools instead of crashing.
+        return {
+          success: false,
+          query,
+          error: err.message || String(err),
+          note: 'La busqueda en la base de conocimiento fallo. Usa searchCatalog y getProductPrice para productos y precios.',
+        };
       }
     },
   } as any);
