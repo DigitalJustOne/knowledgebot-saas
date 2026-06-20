@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Bell, ChatCircleDots, X, ArrowRight, Clock } from '@phosphor-icons/react';
+import { Bell, ChatCircleDots, X, Clock, Check } from '@phosphor-icons/react';
 import Link from 'next/link';
 
 interface HandoffAlert {
@@ -52,6 +52,43 @@ export function NotificationBell() {
       // silent
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Resolve a handoff alert: reactivates the bot so the alert disappears.
+  const resolveAlert = async (conversationId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const res = await fetch('/api/agent/handoff-alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId }),
+      });
+      if (res.ok) {
+        // Remove from the list immediately for instant feedback
+        setAlerts(prev => prev.filter(a => a.conversationId !== conversationId));
+        setCount(prev => Math.max(0, prev - 1));
+      }
+    } catch {
+      // silent
+    }
+  };
+
+  // Resolve ALL alerts at once
+  const resolveAll = async () => {
+    try {
+      await Promise.all(alerts.map(a =>
+        fetch('/api/agent/handoff-alerts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversationId: a.conversationId }),
+        })
+      ));
+      setAlerts([]);
+      setCount(0);
+    } catch {
+      // silent
     }
   };
 
@@ -124,9 +161,20 @@ export function NotificationBell() {
                 </span>
               )}
             </div>
-            <button onClick={() => setOpen(false)} className="text-slate-500 hover:text-slate-300 transition-colors">
-              <X size={16} />
-            </button>
+            <div className="flex items-center gap-2">
+              {count > 0 && (
+                <button
+                  onClick={resolveAll}
+                  title="Marcar todas como atendidas (reactivar bot)"
+                  className="text-[10px] font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+                >
+                  Atender todas
+                </button>
+              )}
+              <button onClick={() => setOpen(false)} className="text-slate-500 hover:text-slate-300 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
           </div>
 
           {/* Content */}
@@ -147,10 +195,8 @@ export function NotificationBell() {
             ) : (
               <div className="p-2 space-y-1">
                 {alerts.map((alert) => (
-                  <Link
+                  <div
                     key={alert.conversationId}
-                    href={`/conversaciones/${alert.conversationId}`}
-                    onClick={() => setOpen(false)}
                     className="flex items-start gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors group"
                   >
                     {/* Avatar */}
@@ -161,8 +207,8 @@ export function NotificationBell() {
                       {(alert.contactName || alert.contactPhone).charAt(0).toUpperCase()}
                     </div>
 
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
+                    {/* Info (clickable to open conversation) */}
+                    <Link href={`/conversaciones/${alert.conversationId}`} onClick={() => setOpen(false)} className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1">
                         <p className="text-sm font-medium text-white truncate">
                           {alert.contactName || alert.contactPhone}
@@ -183,10 +229,17 @@ export function NotificationBell() {
                           {alert.lastMessage}
                         </p>
                       )}
-                    </div>
+                    </Link>
 
-                    <ArrowRight size={14} className="flex-shrink-0 text-slate-600 group-hover:text-primary-400 transition-colors mt-1" />
-                  </Link>
+                    {/* Resolve button (mark as attended → reactivates bot) */}
+                    <button
+                      onClick={(e) => resolveAlert(alert.conversationId, e)}
+                      title="Marcar como atendida (reactivar bot)"
+                      className="flex-shrink-0 mt-1 w-7 h-7 rounded-lg flex items-center justify-center text-slate-600 hover:bg-emerald-500/20 hover:text-emerald-400 transition-colors"
+                    >
+                      <Check size={14} weight="bold" />
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
