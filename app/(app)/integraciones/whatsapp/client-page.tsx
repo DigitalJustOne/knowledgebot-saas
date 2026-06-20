@@ -46,9 +46,14 @@ export default function ClientPage({ initialLines }: { initialLines: WhatsAppLin
           return data;
         });
 
-        // Pull-fallback: for lines awaiting QR without one, try fetching directly from bridge
-        const awaitingWithoutQr = data.filter(l => l.status === 'awaiting_qr' && !l.qr_code);
-        for (const line of awaitingWithoutQr) {
+        // Pull-fallback: for VISIBLE lines awaiting QR without one, try fetching directly from bridge.
+        // Only for lines that pass the visibility filter (connected/awaiting/has phone) to avoid
+        // spamming the bridge with requests for hidden/empty lines (which causes 502 errors).
+        const visibleAwaitingWithoutQr = data.filter(l =>
+          (l.status === 'connected' || l.status === 'awaiting_qr' || l.phone_number) &&
+          l.status === 'awaiting_qr' && !l.qr_code
+        );
+        for (const line of visibleAwaitingWithoutQr) {
           const since = awaitingQrSince.current[line.line_key];
           // Start pulling after 5 seconds, before timeout
           if (since && Date.now() - since > 5000) {
