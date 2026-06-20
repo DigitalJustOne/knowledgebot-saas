@@ -133,47 +133,26 @@ async function processOpenWAWebhook(
   body: Record<string, unknown>,
   supabase: ReturnType<typeof createAdminClient>
 ) {
-  // OpenWA webhooks include session ID — find matching org
+  // The bridge sends line_key at the top level (NOT data.sessionId).
+  // We use it to identify which WhatsApp line the message came from.
   const data = body.data as Record<string, unknown>;
-  const sessionId = data?.sessionId as string || 'default';
-  const lineKey = (body.line_key as string) || (data?.line_key as string) || sessionId;
+  const lineKey = (body.line_key as string) || (data?.line_key as string) || (data?.sessionId as string) || 'default';
 
+  // In multi-line mode there is a single whatsapp_configs row per org (not per line),
+  // so we look up by provider=openwa and use the line_key to route the conversation.
   const { data: waConfig } = await (supabase as any)
     .from('whatsapp_configs')
     .select('*')
-    .eq('openwa_session_id', sessionId)
     .eq('provider', 'openwa')
+    .limit(1)
     .single();
 
   if (!waConfig) {
-    // Try first openwa config
-    const { data: fallbackConfig } = await (supabase as any)
-      .from('whatsapp_configs')
-      .select('*')
-      .eq('provider', 'openwa')
-      .limit(1)
-      .single();
-
-    if (!fallbackConfig) {
-      logger.warn('No OpenWA config found', { sessionId });
-      return;
-    }
-
-    const adapter = createOpenWAAdapter(fallbackConfig);
-    const message = adapter.parseInboundMessage(body);
-    if (!message) return;
-
-    await processInboundMessage(
-      fallbackConfig.organization_id,
-      message,
-      fallbackConfig,
-      lineKey,
-      runAgentForMessage
-    );
+    logger.warn('No OpenWA config found', { lineKey });
     return;
   }
 
-  const adapter = createOpenWAAdapter(waConfig);
+  const adapter = createOpenWAAdapter(waConfig, lineKey);
   const message = adapter.parseInboundMessage(body);
   if (!message) return;
 
