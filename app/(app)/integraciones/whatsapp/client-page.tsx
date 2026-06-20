@@ -181,20 +181,29 @@ export default function ClientPage({ initialLines }: { initialLines: WhatsAppLin
     }
   };
 
-  // Refresh a QR: pull the latest QR directly from the bridge (for expired QRs)
+  // Refresh a QR: force the bridge to REGENERATE a new QR by restarting the session.
+  // This is different from just pulling the existing QR (which may be expired).
+  // We call the same /start endpoint used by "Solicitar QR" to get a fresh QR.
   const handleRefreshQr = async (lineKey: string) => {
     setLineLoading(lineKey, true);
     clearLineError(lineKey);
+    awaitingQrSince.current[lineKey] = Date.now(); // reset the awaiting timer
     try {
-      const res = await fetch(`/api/whatsapp-lines/${lineKey}/qr`);
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        setLineErrors(prev => ({ ...prev, [lineKey]: errData.error || `Error ${res.status}` }));
-      } else {
-        await fetchLines();
+      // Force a NEW session start → bridge destroys the old one and generates a fresh QR
+      const res = await fetch('/api/whatsapp-lines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ line_key: lineKey, display_name: lines.find(l => l.line_key === lineKey)?.display_name }),
+      });
+      const data = await res.json();
+      if (data.bridgeError) {
+        setLineErrors(prev => ({ ...prev, [lineKey]: data.bridgeError }));
+        delete awaitingQrSince.current[lineKey];
       }
+      await fetchLines();
     } catch (e: any) {
       setLineErrors(prev => ({ ...prev, [lineKey]: e.message }));
+      delete awaitingQrSince.current[lineKey];
     } finally {
       setLineLoading(lineKey, false);
     }
