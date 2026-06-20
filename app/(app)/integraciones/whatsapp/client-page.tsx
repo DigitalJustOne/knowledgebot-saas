@@ -12,8 +12,8 @@ interface WhatsAppLine {
   qr_code: string | null;
 }
 
-// Number of WhatsApp lines visible in the panel. Set MAX_WHATSAPP_LINES env to increase.
-const MAX_LINES = Number(process.env.NEXT_PUBLIC_MAX_WHATSAPP_LINES || 3);
+// Maximum number of WhatsApp lines. Set NEXT_PUBLIC_MAX_WHATSAPP_LINES env to override.
+const MAX_LINES = Number(process.env.NEXT_PUBLIC_MAX_WHATSAPP_LINES || 8);
 
 // Track how long each line has been in awaiting_qr without a QR
 const QR_TIMEOUT_MS = 35_000; // 35 seconds
@@ -252,13 +252,12 @@ export default function ClientPage({ initialLines }: { initialLines: WhatsAppLin
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Show only meaningful lines: connected, awaiting QR, or with a phone number.
-            Empty/disconnected lines created in bulk are hidden to reduce clutter. */}
-        {lines.filter(line =>
-          line.status === 'connected' ||
-          line.status === 'awaiting_qr' ||
-          line.phone_number
-        ).map(line => {
+        {/* Show ALL lines that exist, ordered by relevance:
+            connected first, then awaiting QR, then disconnected. */}
+        {[...lines].sort((a, b) => {
+          const order = { connected: 0, awaiting_qr: 1, disconnected: 2 };
+          return (order[a.status] ?? 3) - (order[b.status] ?? 3);
+        }).map(line => {
           const isLineLoading = loadingLines.has(line.line_key);
           const lineError = lineErrors[line.line_key];
           const timedOut = isQrTimedOut(line.line_key);
