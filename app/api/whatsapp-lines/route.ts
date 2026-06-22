@@ -60,12 +60,35 @@ export async function POST(request: NextRequest) {
       }, { onConflict: 'line_key' })
       .select()
       .single();
-      
+
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     // Call bridge to start session. URL + key come from env (WHATSAPP_BRIDGE_URL / BRIDGE_API_KEY)
     // so this works in Railway where each service has its own container.
     const baseUrl = getBridgeUrl();
+
+    // FIRST: check if the session is already connected in the bridge.
+    // If it is, we do NOT regenerate a QR (that would destroy the working session).
+    // We just sync the DB state to 'connected' and return early.
+    try {
+      const statusRes = await fetch(`${baseUrl}/api/sessions/${line_key}/qr`, {
+        headers: bridgeHeaders({}),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (statusRes.ok) {
+        const statusData = await statusRes.json().catch(() => ({}));
+        if (statusData.status === 'connected') {
+          // The session is already live — update the DB and skip QR generation.
+          await (supabase as any)
+            .from('whatsapp_lines')
+            .update({ status: 'connected', qr_code: null })
+            .eq('line_key', line_key);
+          return NextResponse.json({ ...line, status: 'connected', alreadyConnected: true });
+        }
+      }
+    } catch {
+      // Bridge unreachable or session not started — proceed to start it below.
+    }
 
     let bridgeError: string | null = null;
     try {
