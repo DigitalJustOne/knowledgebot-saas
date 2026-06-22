@@ -17,11 +17,14 @@ export function searchCatalogTool() {
       required: ['query'],
     }),
     execute: async (args: any) => {
-      const query = String(args.query || '').trim();
+      const rawQuery = String(args.query || '').trim();
 
-      if (!query) {
+      if (!rawQuery) {
         return { success: false, error: 'Debes enviar un termino de busqueda.' };
       }
+
+      // Format query for PostgreSQL to_tsquery (e.g. 'cuaderno 100 hojas' -> 'cuaderno & 100 & hojas')
+      const query = rawQuery.replace(/[^a-zA-Z0-9\s]/g, ' ').trim().split(/\s+/).filter(Boolean).join(' & ');
 
       try {
         const supabase = createAdminClient();
