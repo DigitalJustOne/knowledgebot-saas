@@ -65,3 +65,6 @@ output.json
 /set_sheet_id.js
 /copy_sheets_integration.js
 /sync_handoff.js
+
+# Graphify generated output
+graphify-out/
