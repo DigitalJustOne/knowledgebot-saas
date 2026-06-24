@@ -36,17 +36,19 @@ export function buildSystemPrompt(
   contactName: string | null,
   contactPhone: string,
   timeZone: string,
-  contactMetadata: any = {}
+  contactMetadata: any = {},
+  hasOscarTrigger = false,
+  isValidColombianName = false
 ): string {
   const businessInfo = config.business_info as unknown as BusinessInfo;
   const services = config.services as unknown as ServiceConfig[];
   const hours = config.business_hours as unknown as BusinessHours;
-
+ 
   const dayNames: Record<string, string> = {
     mon: 'Lunes', tue: 'Martes', wed: 'Miercoles',
     thu: 'Jueves', fri: 'Viernes', sat: 'Sabado', sun: 'Domingo',
   };
-
+ 
   const hoursText = Object.entries(hours)
     .map(([day, slots]) => {
       const dayName = dayNames[day] || day;
@@ -54,19 +56,28 @@ export function buildSystemPrompt(
       return `${dayName}: ${slots.map((s: { start: string; end: string }) => `${s.start} - ${s.end}`).join(', ')}`;
     })
     .join('\n');
-
+ 
   const servicesText = services
     .map(s => `- ${s.name} (${s.duration_minutes} min) - Precio: $${s.price !== undefined ? s.price : 'No especificado'}: ${s.description}`)
     .join('\n');
-
+ 
   const faqText = businessInfo.faq
     ?.map((f: { question: string; answer: string }) => `P: ${f.question}\nR: ${f.answer}`)
     .join('\n\n') || 'No hay preguntas frecuentes configuradas.';
-
-  const isValidName = contactName && isRealName(contactName);
-  const contactInfo = isValidName
-    ? `El cliente se llama ${contactName} y su telefono es ${contactPhone}. Conoces su nombre, pero NO lo repitas en cada mensaje. Úsalo solo una vez al inicio o cuando sea muy natural, de lo contrario suena robótico.`
-    : `El telefono del cliente es ${contactPhone}. Aun no sabemos su nombre real (si te da un nombre real durante la charla, guardalo con saveContactInfo y empieza a usarlo, pero no uses nombres genericos como "Cliente" o codigos).`;
+ 
+  // Lógica nueva de nombres:
+  // - Si el cliente NO nos llama "Oscar", no nos dirigimos a él por su nombre propio bajo ningún motivo.
+  // - Si nos llama "Oscar", podemos dirigirnos por su nombre si es un nombre colombiano válido.
+  let contactInfo = '';
+  if (hasOscarTrigger) {
+    if (isValidColombianName && contactName) {
+      contactInfo = `El cliente se dirige a ti con confianza llamándote "Oscar" o ya te conoce. Su nombre es ${contactName} y su teléfono es ${contactPhone}. Puedes dirigirte a él por su nombre propio de forma natural, pero sin abusar de ello.`;
+    } else {
+      contactInfo = `El teléfono del cliente es ${contactPhone}. El cliente ya te conoce y se dirige a ti llamándote "Oscar", pero aún no sabes su nombre real en tus registros. Pregúntale amablemente cómo se llama para poder guardarlo y llamarlo por su nombre de pila.`;
+    }
+  } else {
+    contactInfo = `El teléfono del cliente es ${contactPhone}. REGLA OBLIGATORIA: El cliente es nuevo o formal. NO te dirijas a él por su nombre propio bajo ningún motivo (incluso si en tus registros aparece el nombre "${contactName || ''}"). Háblale de forma general e impersonal en tercera persona sin llamarlo por su nombre, ya que no hay confianza establecida.`;
+  }
 
   const customerProfile = contactMetadata?.customer_profile
     ? JSON.stringify(contactMetadata.customer_profile, null, 2)

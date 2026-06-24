@@ -2,6 +2,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, stepCountIs } from 'ai';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { buildSystemPrompt } from './system-prompt';
+import { isRealColombianName } from './colombian-names';
 import { getAvailableSlotsTool } from './tools/get-available-slots';
 import { bookAppointmentTool } from './tools/book-appointment';
 import { cancelAppointmentTool } from './tools/cancel-appointment';
@@ -108,7 +109,22 @@ export async function runAgentForMessage(params: {
     const timeZone = orgResult.data?.timezone || 'America/Bogota';
     const contactMetadata = contactResult.data?.metadata || {};
 
-    const systemPrompt = buildSystemPrompt(agentConfig, contactName, contactPhone, timeZone, contactMetadata);
+    // Detect trigger 'oscar' (case-insensitive) in current message or recent history
+    const hasOscarTrigger = messageText.toLowerCase().includes('oscar') ||
+      messages.some(m => m.role === 'user' && m.content.toLowerCase().includes('oscar'));
+
+    // Check if the contact name is a valid Colombian name
+    const isValidColombianName = contactName ? isRealColombianName(contactName) : false;
+
+    const systemPrompt = buildSystemPrompt(
+      agentConfig,
+      contactName,
+      contactPhone,
+      timeZone,
+      contactMetadata,
+      hasOscarTrigger,
+      isValidColombianName
+    );
 
     const toolContext = { orgId, contactPhone, contactName, conversationId };
 
