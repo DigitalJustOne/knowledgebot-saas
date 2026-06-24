@@ -29,13 +29,16 @@ import {
   deleteProduct,
   getGlosario,
   saveGlosarioItem,
-  deleteGlosarioItem
+  deleteGlosarioItem,
+  saveCategorySynonyms
 } from './actions';
 
 interface Category {
   id: string;
   name: string;
   group_name: string | null;
+  synonyms?: string | null;
+  requiresMigration?: boolean;
 }
 
 interface Product {
@@ -84,6 +87,13 @@ export default function KnowledgeBaseClient({ initialCategories }: KnowledgeBase
   const [newCatGroup, setNewCatGroup] = useState('');
   const [showAddCatModal, setShowAddCatModal] = useState(false);
 
+  // Category Synonyms Modal State
+  const [showCatSynonymsModal, setShowCatSynonymsModal] = useState(false);
+  const [selectedCatForSynonyms, setSelectedCatForSynonyms] = useState<Category | null>(null);
+  const [categorySynonymsValue, setCategorySynonymsValue] = useState('');
+  const [savingCatSynonyms, setSavingCatSynonyms] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
+
   // Catalog Filters / Paging
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -123,6 +133,9 @@ export default function KnowledgeBaseClient({ initialCategories }: KnowledgeBase
   const [glosarioTermino, setGlosarioTermino] = useState('');
   const [glosarioSignificado, setGlosarioSignificado] = useState('');
   const [savingGlosario, setSavingGlosario] = useState(false);
+
+  // Check if any category has requiresMigration flag active
+  const dbNeedsMigration = categories.some(cat => cat.requiresMigration);
 
   // Search Debounce Effect
   useEffect(() => {
@@ -197,9 +210,14 @@ export default function KnowledgeBaseClient({ initialCategories }: KnowledgeBase
       setNotes(details.product.notes || '');
       setActive(details.product.active);
       
-      // Extract synonyms from search_text
+      // Extract specific product synonyms from search_text
       let extractedSynonyms = '';
-      if (details.product.search_text && details.product.search_text.includes('Sinónimos:')) {
+      if (details.product.search_text && details.product.search_text.includes('Sinónimos Producto:')) {
+        const match = details.product.search_text.match(/Sinónimos Producto:\s*([^.]+)\./);
+        if (match && match[1]) {
+          extractedSynonyms = match[1];
+        }
+      } else if (details.product.search_text && details.product.search_text.includes('Sinónimos:')) {
         const match = details.product.search_text.match(/Sinónimos:\s*([^.]+)\./);
         if (match && match[1]) {
           extractedSynonyms = match[1];
@@ -255,7 +273,6 @@ export default function KnowledgeBaseClient({ initialCategories }: KnowledgeBase
 
   // Handle Duplicate Product
   const handleDuplicateProduct = () => {
-    // Keep everything but reset ID and append "Copia" to name
     setProductId('');
     setName(prev => `${prev} (Copia)`);
     setIsEditing(false);
@@ -317,7 +334,6 @@ export default function KnowledgeBaseClient({ initialCategories }: KnowledgeBase
       if (res.success) {
         setFormSuccess('Producto guardado correctamente en Supabase.');
         if (!productId) {
-          // If inserting new, set id so user can continue editing or duplicating
           setProductId(res.productId!);
           setIsEditing(true);
         }
@@ -338,6 +354,42 @@ export default function KnowledgeBaseClient({ initialCategories }: KnowledgeBase
         alert('Error al desactivar el producto: ' + res.error);
       }
     }
+  };
+
+  // ─── CATEGORY SYNONYMS HANDLERS ───
+  const handleEditCategorySynonymsClick = (cat: Category) => {
+    setSelectedCatForSynonyms(cat);
+    setCategorySynonymsValue(cat.synonyms || '');
+    setShowCatSynonymsModal(true);
+  };
+
+  const handleSaveCategorySynonymsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCatForSynonyms) return;
+
+    setSavingCatSynonyms(true);
+    try {
+      const res = await saveCategorySynonyms(selectedCatForSynonyms.id, categorySynonymsValue.trim());
+      if (res.success) {
+        // Refresh categories
+        const cats = await getCategories();
+        setCategories(cats);
+        setShowCatSynonymsModal(false);
+        loadProductsList(); // Reload product search texts
+      } else {
+        alert('Error al guardar sinónimos de categoría: ' + res.error);
+      }
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    } finally {
+      setSavingCatSynonyms(false);
+    }
+  };
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText("ALTER TABLE categories ADD COLUMN IF NOT EXISTS synonyms text;");
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 2000);
   };
 
   // ─── GLOSSARY HANDLERS ───
@@ -411,6 +463,25 @@ export default function KnowledgeBaseClient({ initialCategories }: KnowledgeBase
 
   return (
     <div className="space-y-6">
+      {/* ⚠️ Migration Warning Banner */}
+      {dbNeedsMigration && (
+        <div className="p-4 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-pulse-soft">
+          <div className="flex items-start gap-2.5">
+            <WarningCircle size={20} className="shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold block">Acción pendiente en Supabase:</span>
+              <span>Falta la columna 'synonyms' en la tabla de categorías. Por favor, ejecútala en tu editor SQL de Supabase para activar los Sinónimos por Categoría.</span>
+            </div>
+          </div>
+          <button
+            onClick={handleCopySql}
+            className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 transition-all font-medium text-[11px] shrink-0 whitespace-nowrap"
+          >
+            {copiedSql ? '¡Copiado!' : 'Copiar Sentencia SQL'}
+          </button>
+        </div>
+      )}
+
       {/* Tab Selectors */}
       <div className="flex border-b border-white/5 pb-px gap-2 overflow-x-auto">
         <button
@@ -468,18 +539,28 @@ export default function KnowledgeBaseClient({ initialCategories }: KnowledgeBase
               <div className="h-px bg-white/5 my-2" />
               <div className="max-h-[500px] overflow-y-auto space-y-1 pr-1 custom-scrollbar">
                 {categories.map((cat) => (
-                  <button
-                    key={cat.id}
-                    onClick={() => { setSelectedCategoryId(cat.id); setPage(1); }}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all truncate block ${
-                      selectedCategoryId === cat.id
-                        ? 'bg-primary-500/10 text-primary-400 font-medium'
-                        : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                    }`}
-                    title={cat.name}
-                  >
-                    {cat.name}
-                  </button>
+                  <div key={cat.id} className="group flex items-center justify-between rounded-lg hover:bg-white/5 transition-all">
+                    <button
+                      onClick={() => { setSelectedCategoryId(cat.id); setPage(1); }}
+                      className={`flex-1 text-left px-3 py-2 rounded-l-lg text-sm transition-all truncate block ${
+                        selectedCategoryId === cat.id
+                          ? 'bg-primary-500/10 text-primary-400 font-medium'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                      title={`${cat.name} ${cat.synonyms ? `(${cat.synonyms})` : ''}`}
+                    >
+                      {cat.name}
+                    </button>
+                    {!dbNeedsMigration && (
+                      <button
+                        onClick={() => handleEditCategorySynonymsClick(cat)}
+                        className="px-2 py-2 rounded-r-lg text-slate-500 hover:text-primary-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all"
+                        title="Configurar sinónimos de categoría"
+                      >
+                        <Tag size={14} />
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
@@ -501,17 +582,29 @@ export default function KnowledgeBaseClient({ initialCategories }: KnowledgeBase
               </div>
 
               {/* Mobile Category Dropdown Filter */}
-              <div className="block lg:hidden">
+              <div className="flex gap-2 lg:hidden">
                 <select
                   value={selectedCategoryId}
                   onChange={(e) => { setSelectedCategoryId(e.target.value); setPage(1); }}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-sm focus:outline-none focus:border-primary-500"
+                  className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-sm focus:outline-none focus:border-primary-500"
                 >
                   <option value="all">Todas las Categorías</option>
                   {categories.map(cat => (
                     <option key={cat.id} value={cat.id}>{cat.name}</option>
                   ))}
                 </select>
+                {selectedCategoryId !== 'all' && !dbNeedsMigration && (
+                  <button
+                    onClick={() => {
+                      const cat = categories.find(c => c.id === selectedCategoryId);
+                      if (cat) handleEditCategorySynonymsClick(cat);
+                    }}
+                    className="p-2 bg-slate-900 border border-white/10 rounded-xl text-slate-300 hover:text-white"
+                    title="Sinónimos de categoría"
+                  >
+                    <Tag size={18} />
+                  </button>
+                )}
               </div>
 
               <button
@@ -1064,14 +1157,14 @@ export default function KnowledgeBaseClient({ initialCategories }: KnowledgeBase
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-white flex items-center gap-1.5">
                     <Tag size={14} className="text-primary-400" />
-                    Sinónimos y Variaciones de Vocabulario
+                    Sinónimos Específicos del Producto
                   </label>
                   <p className="text-[10px] text-slate-400">
-                    Escribe términos alternativos separados por comas para que la IA los asocie a este producto (ej: esfero, lapicero, lapizero, lapisero, pluma).
+                    Escribe términos alternativos que apliquen *solo* a este producto (ej: termo, camping). Nota: Heredará automáticamente los sinónimos globales de su categoría.
                   </p>
                   <input
                     type="text"
-                    placeholder="ej: esfero, lapicero, lapizero, lapisero, pluma"
+                    placeholder="ej: termo, camping"
                     value={synonyms}
                     onChange={(e) => setSynonyms(e.target.value)}
                     className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-sm focus:outline-none focus:border-primary-500 transition-all"
@@ -1269,6 +1362,69 @@ export default function KnowledgeBaseClient({ initialCategories }: KnowledgeBase
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: EDIT CATEGORY SYNONYMS ─── */}
+      {showCatSynonymsModal && selectedCatForSynonyms && (
+        <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
+          <div onClick={() => setShowCatSynonymsModal(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative w-full max-w-lg bg-slate-950 border border-white/10 rounded-2xl shadow-2xl p-6 overflow-hidden z-10 animate-fade-in">
+            <div className="flex items-center justify-between border-b border-white/5 pb-4 mb-4">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Tag className="text-primary-400" size={18} />
+                Sinónimos Globales: {selectedCatForSynonyms.name}
+              </h3>
+              <button onClick={() => setShowCatSynonymsModal(false)} className="p-1 rounded-lg text-slate-400 hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCategorySynonymsSubmit} className="space-y-4">
+              <div className="p-3 bg-white/2 rounded-xl text-[11px] text-slate-400 flex items-start gap-2">
+                <Info size={14} className="text-primary-400 shrink-0 mt-0.5" />
+                <p>
+                  Las palabras que escribas aquí serán heredadas por **todos** los productos de esta categoría en sus búsquedas de WhatsApp. Sepáralas por comas.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300">Lista de Sinónimos *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: botilito, mug, vasos, posillos, pocillos, tazas"
+                  value={categorySynonymsValue}
+                  onChange={(e) => setCategorySynonymsValue(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-sm focus:outline-none focus:border-primary-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setShowCatSynonymsModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-900 border border-white/10 text-slate-300 text-sm font-medium"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingCatSynonyms}
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl bg-primary-600 hover:bg-primary-500 disabled:opacity-50 text-white text-sm font-semibold"
+                >
+                  {savingCatSynonyms ? (
+                    <>
+                      <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
+                      <span>Actualizando Catálogo...</span>
+                    </>
+                  ) : (
+                    <span>Guardar y Aplicar</span>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

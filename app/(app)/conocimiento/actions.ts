@@ -25,12 +25,32 @@ async function getOrgId() {
 export async function getCategories() {
   try {
     const supabase = await createClient();
+    
+    // Select with synonyms first
     const { data, error } = await supabase
       .from('categories')
-      .select('*')
+      .select('id, name, group_name, synonyms')
       .order('name', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      // Fallback if column 'synonyms' doesn't exist yet in the DB
+      if (error.code === 'PGRST100' || error.message.includes('column') || error.message.includes('synonyms')) {
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('categories')
+          .select('id, name, group_name')
+          .order('name', { ascending: true });
+        
+        if (fallbackError) throw fallbackError;
+        
+        // Return categories mapping with synonyms null and a flag indicating missing migration
+        return (fallbackData || []).map(cat => ({ 
+          ...cat, 
+          synonyms: null, 
+          requiresMigration: true 
+        }));
+      }
+      throw error;
+    }
     return data || [];
   } catch (error: any) {
     logger.error('Error fetching categories', { error: error.message });
@@ -52,6 +72,78 @@ export async function createCategory(name: string, groupName?: string) {
     return { success: true, data };
   } catch (error: any) {
     logger.error('Error creating category', { error: error.message });
+    return { success: false, error: error.message };
+  }
+}
+
+export async function saveCategorySynonyms(categoryId: string, synonyms: string) {
+  try {
+    const supabase = await createClient();
+    
+    // 1. Update synonyms in categories table
+    const { error: catErr } = await supabase
+      .from('categories')
+      .update({ synonyms: synonyms || null })
+      .eq('id', categoryId);
+    
+    if (catErr) throw catErr;
+
+    // 2. Fetch all products in this category to trigger cascade search_text rebuild
+    const { data: products, error: prodErr } = await supabase
+      .from('products')
+      .select('id, name, reference, description, unit, price_includes_iva, min_order_qty, notes, active, search_text')
+      .eq('category_id', categoryId);
+
+    if (prodErr) throw prodErr;
+
+    // 3. Rebuild search_text and embeddings for each product in this category
+    if (products && products.length > 0) {
+      const categoryData = await supabase.from('categories').select('name').eq('id', categoryId).single();
+      const categoryName = categoryData.data?.name || '';
+      const catSynonymsPart = synonyms ? ` Sinónimos Categoría: ${synonyms}.` : '';
+
+      for (const prod of products) {
+        // Extract product's own synonyms if any existed in its search_text
+        let prodSynonyms = '';
+        if (prod.search_text && prod.search_text.includes('Sinónimos Producto:')) {
+          const match = prod.search_text.match(/Sinónimos Producto:\s*([^.]+)\./);
+          if (match && match[1]) {
+            prodSynonyms = match[1];
+          }
+        } else if (prod.search_text && prod.search_text.includes('Sinónimos:')) {
+          // Backward compatibility for old synonyms format
+          const match = prod.search_text.match(/Sinónimos:\s*([^.]+)\./);
+          if (match && match[1]) {
+            prodSynonyms = match[1];
+          }
+        }
+
+        const prodSynonymsPart = prodSynonyms ? ` Sinónimos Producto: ${prodSynonyms}.` : '';
+        const searchText = `${categoryName} - ${prod.name} - ${prod.reference || ''} - ${prod.description || ''}.${catSynonymsPart}${prodSynonymsPart}`.trim();
+
+        let embedding: number[] | null = null;
+        if (process.env.EMBEDDINGS_API_KEY) {
+          try {
+            embedding = await embedText(searchText);
+          } catch (e) {
+            logger.warn('Error generating embedding in cascade trigger', { error: (e as any).message });
+          }
+        }
+
+        await supabase
+          .from('products')
+          .update({
+            search_text: searchText,
+            ...(embedding ? { embedding } : {})
+          })
+          .eq('id', prod.id);
+      }
+    }
+
+    revalidatePath('/conocimiento');
+    return { success: true };
+  } catch (error: any) {
+    logger.error('Error saving category synonyms', { error: error.message, categoryId });
     return { success: false, error: error.message };
   }
 }
@@ -142,7 +234,7 @@ export async function saveProduct(
     min_order_qty: number;
     notes: string;
     active: boolean;
-    synonyms: string; // Comma-separated string in the form
+    synonyms: string; // Comma-separated string in the form (specific product synonyms)
   },
   priceTiers: Array<{
     variant: string;
@@ -155,22 +247,24 @@ export async function saveProduct(
   try {
     const supabase = await createClient();
     
-    // Get category name for search_text composition
+    // Get category name and synonyms for search_text composition
     const { data: category } = await supabase
       .from('categories')
-      .select('name')
+      .select('name, synonyms')
       .eq('id', productData.category_id)
       .single();
 
     const categoryName = category?.name || '';
+    const catSynonyms = (category as any)?.synonyms || '';
+    const catSynonymsPart = catSynonyms ? ` Sinónimos Categoría: ${catSynonyms}.` : '';
     
     // Construct search_text
     const rawSynonyms = productData.synonyms
       ? productData.synonyms.split(',').map(s => s.trim()).filter(Boolean).join(', ')
       : '';
-    const synonymsPart = rawSynonyms ? ` Sinónimos: ${rawSynonyms}.` : '';
+    const prodSynonymsPart = rawSynonyms ? ` Sinónimos Producto: ${rawSynonyms}.` : '';
     
-    const searchText = `${categoryName} - ${productData.name} - ${productData.reference || ''} - ${productData.description || ''}.${synonymsPart}`.trim();
+    const searchText = `${categoryName} - ${productData.name} - ${productData.reference || ''} - ${productData.description || ''}.${catSynonymsPart}${prodSynonymsPart}`.trim();
 
     // Generate vector embedding (optional, if configured)
     let embedding: number[] | null = null;
