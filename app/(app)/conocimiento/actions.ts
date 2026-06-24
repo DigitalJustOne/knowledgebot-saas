@@ -27,7 +27,7 @@ export async function getCategories() {
     const supabase = await createClient();
     
     // Select with synonyms first
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('categories')
       .select('id, name, group_name, synonyms')
       .order('name', { ascending: true });
@@ -35,7 +35,7 @@ export async function getCategories() {
     if (error) {
       // Fallback if column 'synonyms' doesn't exist yet in the DB
       if (error.code === 'PGRST100' || error.message.includes('column') || error.message.includes('synonyms')) {
-        const { data: fallbackData, error: fallbackError } = await supabase
+        const { data: fallbackData, error: fallbackError } = await (supabase as any)
           .from('categories')
           .select('id, name, group_name')
           .order('name', { ascending: true });
@@ -43,7 +43,7 @@ export async function getCategories() {
         if (fallbackError) throw fallbackError;
         
         // Return categories mapping with synonyms null and a flag indicating missing migration
-        return (fallbackData || []).map(cat => ({ 
+        return (fallbackData || []).map((cat: any) => ({ 
           ...cat, 
           synonyms: null, 
           requiresMigration: true 
@@ -61,7 +61,7 @@ export async function getCategories() {
 export async function createCategory(name: string, groupName?: string) {
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('categories')
       .insert({ name, group_name: groupName || null })
       .select()
@@ -81,7 +81,7 @@ export async function saveCategorySynonyms(categoryId: string, synonyms: string)
     const supabase = await createClient();
     
     // 1. Update synonyms in categories table
-    const { error: catErr } = await supabase
+    const { error: catErr } = await (supabase as any)
       .from('categories')
       .update({ synonyms: synonyms || null })
       .eq('id', categoryId);
@@ -89,7 +89,7 @@ export async function saveCategorySynonyms(categoryId: string, synonyms: string)
     if (catErr) throw catErr;
 
     // 2. Fetch all products in this category to trigger cascade search_text rebuild
-    const { data: products, error: prodErr } = await supabase
+    const { data: products, error: prodErr } = await (supabase as any)
       .from('products')
       .select('id, name, reference, description, unit, price_includes_iva, min_order_qty, notes, active, search_text')
       .eq('category_id', categoryId);
@@ -98,7 +98,7 @@ export async function saveCategorySynonyms(categoryId: string, synonyms: string)
 
     // 3. Rebuild search_text and embeddings for each product in this category
     if (products && products.length > 0) {
-      const categoryData = await supabase.from('categories').select('name').eq('id', categoryId).single();
+      const categoryData = await (supabase as any).from('categories').select('name').eq('id', categoryId).single();
       const categoryName = categoryData.data?.name || '';
       const catSynonymsPart = synonyms ? ` Sinónimos Categoría: ${synonyms}.` : '';
 
@@ -130,7 +130,7 @@ export async function saveCategorySynonyms(categoryId: string, synonyms: string)
           }
         }
 
-        await supabase
+        await (supabase as any)
           .from('products')
           .update({
             search_text: searchText,
@@ -160,7 +160,7 @@ export async function getCatalog(params: {
     const offset = (params.page - 1) * params.limit;
 
     // Build query
-    let queryBuilder = supabase
+    let queryBuilder = (supabase as any)
       .from('products')
       .select('*, categories(name)', { count: 'exact' });
 
@@ -198,7 +198,7 @@ export async function getCatalog(params: {
 export async function getProductDetails(productId: string) {
   try {
     const supabase = await createClient();
-    const { data: product, error: prodErr } = await supabase
+    const { data: product, error: prodErr } = await (supabase as any)
       .from('products')
       .select('*')
       .eq('id', productId)
@@ -206,7 +206,7 @@ export async function getProductDetails(productId: string) {
 
     if (prodErr) throw prodErr;
 
-    const { data: tiers, error: tiersErr } = await supabase
+    const { data: tiers, error: tiersErr } = await (supabase as any)
       .from('price_tiers')
       .select('*')
       .eq('product_id', productId)
@@ -248,7 +248,7 @@ export async function saveProduct(
     const supabase = await createClient();
     
     // Get category name and synonyms for search_text composition
-    const { data: category } = await supabase
+    const { data: category } = await (supabase as any)
       .from('categories')
       .select('name, synonyms')
       .eq('id', productData.category_id)
@@ -294,14 +294,14 @@ export async function saveProduct(
 
     if (productData.id) {
       // Update
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('products')
         .update(dbProduct)
         .eq('id', productData.id);
       if (error) throw error;
     } else {
       // Insert
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('products')
         .insert(dbProduct)
         .select('id')
@@ -312,7 +312,7 @@ export async function saveProduct(
 
     // Now handle price tiers. Clean out existing tiers first
     if (productData.id) {
-      const { error: deleteTiersErr } = await supabase
+      const { error: deleteTiersErr } = await (supabase as any)
         .from('price_tiers')
         .delete()
         .eq('product_id', savedProductId);
@@ -332,7 +332,7 @@ export async function saveProduct(
         source_sheet: 'Web SaaS Dashboard',
       }));
 
-      const { error: insertTiersErr } = await supabase
+      const { error: insertTiersErr } = await (supabase as any)
         .from('price_tiers')
         .insert(tiersToInsert);
       if (insertTiersErr) throw insertTiersErr;
@@ -350,7 +350,7 @@ export async function deleteProduct(productId: string) {
   try {
     const supabase = await createClient();
     // Soft delete by setting active = false to preserve reference integrity
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('products')
       .update({ active: false })
       .eq('id', productId);
@@ -371,7 +371,7 @@ export async function getGlosario() {
     const orgId = await getOrgId();
 
     // Find the Glossary document
-    let { data: doc, error: docErr } = await supabase
+    let { data: doc, error: docErr } = await (supabase as any)
       .from('knowledge_documents')
       .select('id')
       .eq('organization_id', orgId)
@@ -385,7 +385,7 @@ export async function getGlosario() {
     }
 
     // Retrieve chunks
-    const { data: chunks, error: chunksErr } = await supabase
+    const { data: chunks, error: chunksErr } = await (supabase as any)
       .from('knowledge_chunks')
       .select('id, content, metadata')
       .eq('document_id', doc.id)
@@ -410,7 +410,7 @@ export async function saveGlosarioItem(
     const orgId = await getOrgId();
 
     // 1. Get or Create the glossary document
-    let { data: doc, error: docErr } = await supabase
+    let { data: doc, error: docErr } = await (supabase as any)
       .from('knowledge_documents')
       .select('id')
       .eq('organization_id', orgId)
@@ -420,7 +420,7 @@ export async function saveGlosarioItem(
     if (docErr && docErr.code !== 'PGRST116') throw docErr;
 
     if (!doc) {
-      const { data: newDoc, error: createDocErr } = await supabase
+      const { data: newDoc, error: createDocErr } = await (supabase as any)
         .from('knowledge_documents')
         .insert({
           organization_id: orgId,
@@ -450,13 +450,13 @@ export async function saveGlosarioItem(
     };
 
     if (chunkId) {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('knowledge_chunks')
         .update(chunkData)
         .eq('id', chunkId);
       if (error) throw error;
     } else {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('knowledge_chunks')
         .insert(chunkData);
       if (error) throw error;
@@ -473,7 +473,7 @@ export async function saveGlosarioItem(
 export async function deleteGlosarioItem(chunkId: string) {
   try {
     const supabase = await createClient();
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('knowledge_chunks')
       .delete()
       .eq('id', chunkId);
