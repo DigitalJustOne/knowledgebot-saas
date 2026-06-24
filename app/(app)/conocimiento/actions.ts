@@ -11,7 +11,7 @@ async function getOrgId() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('No autenticado');
 
-  const { data: profile } = await supabase
+  const { data: profile } = await (supabase as any)
     .from('profiles')
     .select('organization_id')
     .eq('id', user.id)
