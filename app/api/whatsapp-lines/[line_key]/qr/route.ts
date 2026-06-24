@@ -36,6 +36,13 @@ export async function GET(
       signal: AbortSignal.timeout(5000),
     });
 
+    // If the bridge returns 404, the session hasn't been started yet.
+    // Return a clean status instead of a 502 error so the panel can show
+    // the correct UI (e.g. "Solicitar QR" button).
+    if (bridgeRes.status === 404) {
+      return NextResponse.json({ status: 'not_started', qr: null, message: 'Session not started. Click "Solicitar QR" to begin.' });
+    }
+
     if (!bridgeRes.ok) {
       return NextResponse.json({ error: `Bridge error: ${bridgeRes.status}` }, { status: 502 });
     }
