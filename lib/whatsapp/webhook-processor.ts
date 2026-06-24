@@ -183,7 +183,7 @@ export async function processInboundMessage(
 
     // 4. Insert message (idempotent)
     const direction = message.fromMe ? 'outbound' : 'inbound';
-    const sender = message.fromMe ? 'agent' : 'contact';
+    const sender = message.fromMe ? 'bot' : 'contact';
 
     const { error: msgErr } = await (supabase as any)
       .from('messages')
