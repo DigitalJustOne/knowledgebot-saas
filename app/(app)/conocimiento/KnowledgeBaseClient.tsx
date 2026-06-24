@@ -226,7 +226,7 @@ export default function KnowledgeBaseClient({ initialCategories }: KnowledgeBase
       setSynonyms(extractedSynonyms);
 
       // Cast price tiers
-      setPriceTiers(details.priceTiers.map(t => ({
+      setPriceTiers(details.priceTiers.map((t: any) => ({
         id: t.id,
         variant: t.variant,
         min_qty: Number(t.min_qty),
