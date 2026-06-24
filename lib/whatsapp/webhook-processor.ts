@@ -181,7 +181,10 @@ export async function processInboundMessage(
       }
     }
 
-    // 4. Insert inbound message (idempotent)
+    // 4. Insert message (idempotent)
+    const direction = message.fromMe ? 'outbound' : 'inbound';
+    const sender = message.fromMe ? 'agent' : 'contact';
+
     const { error: msgErr } = await (supabase as any)
       .from('messages')
       .upsert(
@@ -189,8 +192,8 @@ export async function processInboundMessage(
           conversation_id: conversationId,
           organization_id: orgId,
           wa_message_id: message.messageId,
-          direction: 'inbound',
-          sender: 'contact',
+          direction,
+          sender,
           content: message.text,
           line_key: lineKey,
           raw: message.raw,
@@ -206,8 +209,8 @@ export async function processInboundMessage(
       return { success: true, conversationId };
     }
 
-    // 5. If bot active, invoke agent
-    if (botActive) {
+    // 5. If bot active and message is not from me, invoke agent
+    if (botActive && !message.fromMe) {
       const { data: agentConfig } = await (supabase as any)
         .from('agent_configs')
         .select('*')

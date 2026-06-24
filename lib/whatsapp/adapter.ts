@@ -103,20 +103,24 @@ export function createOpenWAAdapter(config: WhatsAppConfig, lineKey?: string | n
         if (!message) return null;
 
         const fromRaw = message.from as string;
+        const toRaw = message.to as string;
+        const fromMe = !!message.fromMe;
         const text = (message.body as string || message.text as string || '').trim();
         const media = message.media as any;
         
-        if (!fromRaw) return null;
+        const contactPhone = fromMe ? toRaw : fromRaw;
+        if (!contactPhone) return null;
         if (!text && !media) return null;
 
         return {
           messageId: (message.id as string) || `openwa_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-          from: fromRaw,
+          from: contactPhone,
           text,
           timestamp: Date.now(),
           raw: body,
           media: media || null,
-          customerName: message.customerName as string || '',
+          customerName: fromMe ? 'Tú' : (message.customerName as string || ''),
+          fromMe,
         };
       } catch {
         return null;
